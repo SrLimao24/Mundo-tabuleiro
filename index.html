@@ -1,0 +1,1551 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0b1a22">
+<meta name="mobile-web-app-capable" content="yes">
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js"></script>
+<title>Mundo dos Tabuleiros</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Pirata+One&display=swap">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<style>
+/* Layout: cabeçalho do jogo, cinco abas (Banco, Terras, Baús, Poder, Mundo) com barra fixa embaixo; mar escuro e ouro. */
+:root{
+  color-scheme: dark;
+  --bg:#0b1a22; --surface:#122733; --surface-2:#1a3444; --line:#26485b;
+  --fg:#e9f0f3; --muted:#90a8b5; --gold:#e6b63f; --on-gold:#241a00;
+  --bad:#ec6a57; --good:#58bb8c;
+  --font-display:'Pirata One',Georgia,serif;
+  --font-body:'Inter',system-ui,-apple-system,'Segoe UI',sans-serif;
+}
+@media (prefers-color-scheme: light){
+  :root:not([data-theme="dark"]){
+    color-scheme: light;
+    --bg:#e9f1f5; --surface:#ffffff; --surface-2:#dbe8ee; --line:#b8ccd7;
+    --fg:#0e2430; --muted:#516b79; --gold:#a8730a; --on-gold:#ffffff;
+    --bad:#c13d2b; --good:#1f7a52;
+  }
+}
+:root[data-theme="light"]{
+  color-scheme: light;
+  --bg:#e9f1f5; --surface:#ffffff; --surface-2:#dbe8ee; --line:#b8ccd7;
+  --fg:#0e2430; --muted:#516b79; --gold:#a8730a; --on-gold:#ffffff;
+  --bad:#c13d2b; --good:#1f7a52;
+}
+*{box-sizing:border-box}
+body{
+  background:var(--bg); color:var(--fg); font-family:var(--font-body); font-size:15px; line-height:1.45;
+  padding-block:12px 110px;
+  padding-left:max(16px,env(safe-area-inset-left,0px));
+  padding-right:max(16px,env(safe-area-inset-right,0px));
+}
+.wrap{max-width:560px;margin:0 auto;display:flex;flex-direction:column;gap:14px}
+header{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap}
+h1{font-family:var(--font-display);font-weight:400;font-size:30px;letter-spacing:.5px;margin:0;color:var(--gold);line-height:1.1}
+h2{font-size:12px;text-transform:uppercase;letter-spacing:.09em;color:var(--muted);margin:0 0 8px;font-weight:600}
+.chip{font-size:12px;padding:5px 10px;border-radius:99px;background:var(--surface-2);color:var(--fg);border:1px solid var(--line)}
+.chip b{color:var(--gold)}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:14px;min-width:0}
+.stack{display:flex;flex-direction:column;gap:10px}
+.row{display:flex;gap:10px;align-items:center;justify-content:space-between;min-width:0}
+.row>*{min-width:0}
+.money{font-variant-numeric:tabular-nums;font-weight:700}
+.big{font-family:var(--font-display);font-size:54px;line-height:1;color:var(--gold);font-variant-numeric:tabular-nums}
+.title{font-family:var(--font-display);font-size:30px;line-height:1.1;color:var(--gold)}
+.muted{color:var(--muted)}
+.small{font-size:13px}
+.bar{height:10px;border-radius:99px;background:var(--surface-2);overflow:hidden}
+.bar>i{display:block;height:100%;background:var(--good);border-radius:99px}
+.bar.low>i{background:var(--bad)}
+label{display:block;font-size:13px;color:var(--muted);margin-bottom:4px}
+input[type=text],input[type=number],input[type=url],input[type=password],select{
+  width:100%;background:var(--surface-2);color:var(--fg);border:1px solid var(--line);
+  border-radius:10px;padding:12px;font:inherit;font-size:16px;
+}
+:focus-visible{outline:2px solid var(--gold);outline-offset:2px}
+.btn{
+  background:var(--gold);color:var(--on-gold);border:0;border-radius:10px;padding:12px 16px;
+  font:inherit;font-weight:700;font-size:15px;cursor:pointer;min-height:46px;
+}
+.btn.ghost{background:transparent;color:var(--fg);border:1px solid var(--line);font-weight:600}
+.btn.danger{background:var(--bad);color:#fff}
+.btn.small{min-height:38px;padding:8px 12px;font-size:13px}
+.btn:disabled{opacity:.5;cursor:default}
+.msg{padding:10px 12px;border-radius:10px;font-size:14px;border:1px solid var(--line);background:var(--surface-2)}
+.msg.ok{border-color:var(--good)} .msg.err{border-color:var(--bad)}
+.banner{background:var(--bad);color:#fff;border-radius:14px;padding:14px}
+.banner b{font-family:var(--font-display);font-weight:400;font-size:24px;display:block}
+.list{display:flex;flex-direction:column}
+.item{display:flex;justify-content:space-between;gap:10px;padding:9px 0;border-bottom:1px solid var(--line);min-width:0}
+.item:last-child{border-bottom:0}
+.item>span:first-child{min-width:0;overflow-wrap:anywhere}
+.pos{color:var(--good)} .neg{color:var(--bad)}
+.classes{display:grid;gap:8px}
+.cls{display:block;border:1px solid var(--line);border-radius:12px;padding:10px 12px;cursor:pointer;margin:0;color:var(--fg)}
+.cls input{margin-right:8px;accent-color:var(--gold)}
+.cls small{display:block;color:var(--muted);margin-left:26px}
+.event{border:1px solid var(--line);border-radius:12px;padding:10px 12px;display:flex;gap:10px;justify-content:space-between;align-items:center}
+.event b{display:block}
+.rents{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;text-align:center}
+.rents div{background:var(--surface-2);border-radius:8px;padding:6px 2px;font-size:12px;color:var(--muted)}
+.rents div.on{outline:2px solid var(--gold);color:var(--fg)}
+.rents b{display:block;font-size:14px;color:var(--fg);font-variant-numeric:tabular-nums}
+/*qr*/.qr{background:#fff;padding:10px;border-radius:12px;display:inline-block;line-height:0}.qr img,.qr canvas{max-width:100%;height:auto}
+code{font-family:ui-monospace,Menlo,monospace;font-size:13px;background:var(--surface-2);padding:2px 6px;border-radius:6px;overflow-wrap:anywhere}
+nav{
+  position:fixed;left:0;right:0;bottom:0;z-index:5;background:var(--surface);border-top:1px solid var(--line);
+  display:grid;grid-template-columns:repeat(6,1fr);gap:2px;
+  padding:8px max(8px,env(safe-area-inset-right,0px)) calc(8px + env(safe-area-inset-bottom,0px)) max(8px,env(safe-area-inset-left,0px));
+}
+nav button{background:transparent;border:0;color:var(--muted);font:inherit;font-weight:600;font-size:11.5px;padding:10px 1px;border-radius:10px;cursor:pointer}
+nav button[aria-current=true]{background:var(--surface-2);color:var(--gold)}
+@media (prefers-reduced-motion: no-preference){.bar>i{transition:width .4s}}
+#roulette{position:fixed;inset:0;z-index:20;background:rgba(0,0,0,.75);display:flex;align-items:center;justify-content:center;padding:16px}
+#roulette[hidden]{display:none}
+.rbox{background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:18px;text-align:center;max-width:320px;width:100%}
+.rt{font-weight:700;margin-bottom:12px}.rr{font-family:var(--font-display);font-size:26px;color:var(--gold);min-height:34px;margin-top:12px}
+.rwrap{position:relative;width:220px;height:220px;margin:0 auto}
+.wheel{width:100%;height:100%;border-radius:50%;border:4px solid var(--fg)}
+.ptr{position:absolute;left:50%;top:-12px;transform:translateX(-50%);border:10px solid transparent;border-top:20px solid var(--gold);z-index:2}
+</style>
+
+<div class="wrap">
+  <header>
+    <h1>Mundo dos Tabuleiros</h1>
+    <span class="chip" id="presChip" hidden></span>
+    <button class="btn small" data-act="scan" id="scanBtn">Ler QR</button>
+    <input type="file" id="scanFile" accept="image/*" capture="environment" hidden>
+  </header>
+  <div id="app" class="stack"></div>
+</div>
+<nav id="tabs" aria-label="Seções">
+  <button data-tab="me">Eu</button>
+  <button data-tab="bank">Banco</button>
+  <button data-tab="city">Lugares</button>
+  <button data-tab="land">Terras</button>
+  <button data-tab="ilha">Ilha</button>
+  <button data-tab="more">Mais</button>
+</nav>
+<div id="roulette" hidden><div class="rbox"><div class="rt"></div><div class="rwrap"><i class="ptr"></i><div class="wheel"></div></div><div class="rr"></div></div></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jsQR/1.4.0/jsQR.min.js"></script>
+<script>
+(function(){
+const PASS_HASH='a41f2a9a83877bcd71571723c4318748afdb45066b621d19be2932ebd3d9b03a'; const PASS_HASHES=[PASS_HASH,'7b215aa87a5fbecfa0dafa7ff779186258b8a7c3c9aca4bb0438deddce45cf15'];
+const START=500, MAXHP=100;
+/* Jogo 2: a cidade (lugares, cursos, comida, veículos) */
+const PLACES={
+  ESCOLA:{name:'Escola',sal:90},
+  MERCADO:{name:'Hipermercado Baratão',sal:70,owned:true,price:500,board:[2,7,15,25,25,15,7]},
+  PADARIA:{name:'Padaria Bróa Boa',sal:60,owned:true,price:400,board:[5,10,30,30,10,5]},
+  CONCESSIONARIA:{name:'Concessionária Veloz',sal:100,owned:true,price:600,board:[7,15,100,15,7]},
+  SHOPPING:{name:'Shopping',sal:80,owned:true,price:700,board:[5,7,35,35,7,5]},
+  BANCO:{name:'Banco',sal:120},
+  HOSPITAL:{name:'Hospital',sal:110},
+  PREFEITURA:{name:'Prefeitura',sal:100},
+  AEROPORTO:{name:'Aeroporto',sal:90}
+};
+const PLACE_IDS=Object.keys(PLACES);
+const COURSES={
+  ECONOMIA:{name:'Economia',kind:'Faculdade',cost:150,rounds:3,desc:'Você paga 20% menos nos pagamentos ao banco.'},
+  ADMINISTRACAO:{name:'Administração',kind:'Faculdade',cost:200,rounds:3,desc:'Permite comprar empresas da cidade.'},
+  GASTRONOMIA:{name:'Gastronomia',kind:'Faculdade',cost:120,rounds:2,desc:'Comida 30% mais barata.'},
+  MEDICINA:{name:'Medicina',kind:'Faculdade',cost:300,rounds:4,desc:'Consultas no hospital curam 50% a mais.'},
+  EXCEL:{name:'Curso de Excel',kind:'Curso rápido',cost:40,rounds:1,desc:'Entra no currículo.'},
+  INGLES:{name:'Curso de inglês',kind:'Curso rápido',cost:60,rounds:1,desc:'Entra no currículo.'},
+  INFORMATICA:{name:'Curso de informática',kind:'Curso rápido',cost:50,rounds:1,desc:'Entra no currículo.'}
+};
+const SKILL_NAME=k=>k==='ROUPA'?'Roupa social':(COURSES[k]?COURSES[k].name:k);
+const FOODS={
+  PADARIA:[{id:'pao',name:'Pão com café',cost:6,gain:12},{id:'lanche',name:'Lanche completo',cost:12,gain:25}],
+  MERCADO:[{id:'marmita',name:'Marmita',cost:10,gain:20},{id:'cesta',name:'Cesta de compras',cost:20,gain:40}]
+};
+const VEHICLES=[{id:'bike',name:'Bicicleta',cost:80,bonus:1},{id:'moto',name:'Moto',cost:200,bonus:2},{id:'carro',name:'Carro',cost:500,bonus:3}];
+const LOCS={cidade:'Cidade',mundo:'Mundo',ilha:'Ilha dos piratas'};
+const STOP_MULT=[1,1,2,3];
+
+const CLASSES={
+  pirata:{name:'Pirata',desc:'Baús rendem 20% a mais.'},
+  banqueiro:{name:'Banqueiro',desc:'Perdas em porcentagem caem pela metade.'},
+  soldado:{name:'Soldado',desc:'Sofre 30% menos dano de vida.'},
+  comerciante:{name:'Comerciante',desc:'Compra países e companhias 15% mais barato.'},
+  construtor:{name:'Construtor',desc:'Casas e hotéis custam 25% menos.'},
+  politico:{name:'Político',desc:'Seu voto vale dobro e paga metade do imposto.'},
+  medico:{name:'Médico',desc:'Curas de vida valem 50% a mais.'},
+  nomade:{name:'Nômade',desc:'Paga 25% menos de aluguel.'}
+};
+const EVENTS={
+  TEMPESTADE:{name:'Tempestade na ilha',text:'Mar bravo. Todos perdem 15 de vida.',hp:-15},
+  PESTE:{name:'Peste na cidade',text:'Todos perdem 10 de vida.',hp:-10},
+  INFLACAO:{name:'Inflação',text:'Todos perdem 15% do dinheiro.',pct:-15},
+  CRISE:{name:'Crise bancária',text:'Todos perdem 25% do dinheiro.',pct:-25},
+  PIRATAS:{name:'Ataque de piratas',text:'Todos perdem $60 e 10 de vida.',money:-60,hp:-10},
+  FESTA:{name:'Festa nacional',text:'Todos ganham $80.',money:80},
+  FEIRA:{name:'Feira de ofertas',text:'Todos ganham $50 e curam 5 de vida.',money:50,hp:5},
+  MUTIRAO:{name:'Mutirão de saúde',text:'Todos curam 20 de vida.',hp:20}
+};
+/* Jogo 1: países e companhias, valores dos cartões */
+const GROUPS={AM:'Américas',AS:'Ásia',AF:'África',EO:'Europa Ocidental',EN:'Europa Norte',EL:'Europa Central e Leste',ES:'Europa Sul',CIA:'Companhias'};
+const BASE=[
+ ['WASHINGTON','Washington','AM',65,20,35,[10,35,60,95],50],
+ ['OTTAWA','Ottawa','AM',200,60,120,[40,120,200,320],160],
+ ['HAVANA','Havana','AM',150,45,90,[30,90,150,240],120],
+ ['BUENOSAIRES','Buenos Aires','AM',40,10,25,[10,25,40,65],30],
+ ['BRASILIA','Brasília','AM',150,45,90,[30,90,150,240],120],
+ ['SANTIAGO','Santiago','AM',65,20,40,[15,40,65,105],50],
+ ['HANOI','Hanói','AS',40,10,25,[10,25,40,65],30],
+ ['NOVADELHI','Nova Delhi','AS',65,20,40,[15,40,65,105],50],
+ ['PEQUIM','Pequim','AS',80,25,50,[15,50,80,130],65],
+ ['BANGCOC','Bangcoc','AS',70,20,40,[15,40,70,110],55],
+ ['KUALALUMPUR','Kuala Lumpur','AS',80,25,50,[15,50,80,130],65],
+ ['TRIPOLI','Trípoli','AF',50,15,30,[10,30,50,80],40],
+ ['CAIRO','Cairo','AF',120,35,70,[25,70,120,240],95],
+ ['LONDRES','Londres','EO',70,20,40,[15,40,70,110],55],
+ ['PARIS','Paris','EO',80,25,50,[15,50,80,130],65],
+ ['BERLIM','Berlim','EO',80,25,50,[15,50,80,130],65],
+ ['AMSTERDA','Amsterdã','EO',80,25,50,[15,50,80,130],65],
+ ['DUBLIN','Dublin','EO',80,25,50,[15,50,80,130],65],
+ ['ESTOCOLMO','Estocolmo','EN',120,35,70,[25,70,120,240],95],
+ ['OSLO','Oslo','EN',65,20,40,[15,40,65,105],50],
+ ['VARSOVIA','Varsóvia','EL',35,10,20,[5,20,35,55],30],
+ ['VIENA','Viena','EL',50,15,30,[10,30,50,80],40],
+ ['MOSCOU','Moscou','EL',200,60,120,[40,120,200,320],160],
+ ['ROMA','Roma','ES',100,30,60,[20,60,100,160],80],
+ ['MADRI','Madri','ES',30,10,20,[5,20,30,50],25],
+ ['LISBOA','Lisboa','ES',100,30,60,[20,60,100,160],80],
+ ['ATENAS','Atenas','ES',200,60,120,[40,120,200,320],160]
+];
+const COMP=[['CIAAVIACAO','Cia de Aviação'],['CIAFERROVIARIA','Cia Ferroviária'],['CIANAVEGACAO','Cia de Navegação'],['CIAONIBUS','Cia de Ônibus']];
+const CAT={};
+BASE.forEach(([id,name,g,price,casa,hotel,rent,mort])=>{CAT[id]={id,name,kind:'country',g,price,casa,hotel,rent,mort};});
+COMP.forEach(([id,name])=>{CAT[id]={id,name,kind:'company',g:'CIA',price:100,mort:80};});
+const IDS=Object.keys(CAT);
+const LEVEL=['sem construção','1 casa','2 casas','hotel'];
+
+const $=s=>document.querySelector(s);
+const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const fmt=n=>(n<0?'−':'')+'$'+Math.abs(Math.round(n)).toLocaleString('pt-BR');
+const S={players:{},log:[],chests:{},votes:{},game:{},catalog:{},loaded:{},tab:'me',sub:'chest',place:'ESCOLA',msg:null,pending:null,sel:'ROMA',edSel:'ROMA',uid:null,unlocked:false,canWrite:true,busy:false,timedOut:false,fatal:null,confirmBk:false,charges:{},island:{},iguess:{},locCode:null,ipSel:'GRANDEFIGUEIRA',tick:null,payCode:null,sendTarget:null,forceSend:false,codeBusy:false,hashCode:null};
+let db=null, downloads=null, C={P:{},props:{},pl:{},bills:{},round:0,taxRate:10,loanRate:20,president:null,over:false,dead:[],reason:'death',winner:null,feed:[]};
+
+function cat(id){
+  const b=CAT[id]; if(!b) return null;
+  const o=(S.catalog&&S.catalog[id])||{}; const c={...b,...o};
+  if(Array.isArray(o.rent)&&o.rent.length===4) c.rent=o.rent;
+  c.mort=Math.min(Number(c.mort)||0,Math.floor((Number(c.price)||0)*0.8));
+  return c;
+}
+/* ---------- regras do jogo: saldo, vida e posses saem do histórico ---------- */
+function applyEv(p,ev){
+  if(p.dead||p.bankrupt) return;
+  let dm=ev.money||0;
+  if(ev.pct){ let pc=ev.pct; if(pc<0&&p.cls==='banqueiro') pc/=2; dm+=Math.round(Math.max(p.money,0)*pc/100); }
+  let dh=ev.hp||0;
+  if(dh<0&&p.cls==='soldado') dh=Math.round(dh*0.7);
+  if(dh>0&&p.cls==='medico') dh=Math.round(dh*1.5);
+  p.money+=dm; p.hp=Math.min(MAXHP,p.hp+dh);
+  p.hist.push({ts:ev.ts,text:ev.name,dm,dh});
+  if(p.hp<=0) p.dead=true;
+}
+function compute(){
+  const P={}, props={}, pl={}, bills={};
+  IDS.forEach(id=>{props[id]={owner:null,level:0,mort:false};});
+  PLACE_IDS.forEach(id=>{pl[id]={owner:null,level:0,salary:null};});
+  for(const [id,p] of Object.entries(S.players)) P[id]={id,name:p.name,cls:p.cls,code:p.code||'',joined:p.joinedAt||0,money:START,hp:MAXHP,food:100,loc:'cidade',at:null,job:null,skills:[],study:null,vehicle:null,title:null,dest:null,crime:0,ipl:null,rolled:false,lastRoll:null,hist:[],dead:false,bankrupt:false};
+  const feed=[];
+  let round=0, billSeq=0, taxRate=10, loanRate=20, president=null; const rolled=new Set();
+  const act=id=>!!P[id]&&!P[id].dead&&!P[id].bankrupt;
+  const H=(p,ts,text,dm,dh)=>p.hist.push({ts,text,dm:dm||0,dh:dh||0});
+  const curPres=()=>{
+    if(president&&act(president)) return president;
+    if(!president&&S.game&&S.game.president&&act(S.game.president)) return S.game.president;
+    return null;
+  };
+  const activeFor=ts=>Object.values(P).filter(p=>act(p.id)&&p.joined<=ts);
+  const ownsG=(owner,g)=>IDS.filter(x=>CAT[x].g===g&&CAT[x].kind==='country').every(x=>props[x].owner===owner&&!props[x].mort);
+  const rentRep=id=>{ const c=cat(id),pr=props[id]; if(!c||c.kind!=='country') return 0; let r=c.rent[pr.level]; if(pr.level===0&&ownsG(pr.owner,c.g)) r*=2; return Math.round(r); };
+  const addBill=(kind,payer,to,amount,reason,due,ts)=>{
+    const id=kind+'-'+round+'-'+payer+'-'+(++billSeq);
+    bills[id]={id,kind,payer,to,amount,reason,round,due,paid:false,ts};
+  };
+  const settle=(b,auto,ts)=>{
+    const p=P[b.payer]; if(!p||b.paid) return;
+    const amt=auto?Math.round(b.amount*1.1):b.amount;
+    p.money-=amt; if(b.to&&P[b.to]) P[b.to].money+=b.amount;
+    b.paid=true;
+    H(p,ts,(auto?'Cobrança automática (+10%): ':'Pagou: ')+b.reason,-amt);
+    if(b.to&&P[b.to]) H(P[b.to],ts,'Recebeu: '+b.reason+' ('+p.name+')',b.amount);
+  };
+  const endRound=ts=>{
+    round++; rolled.clear(); Object.values(P).forEach(p=>{p.rolled=false;});
+    const actives=activeFor(ts);
+    feed.push({ts,text:'Rodada '+round+' concluída'});
+    for(const p of actives){
+      p.food=Math.max(0,p.food-10);
+      if(p.food<=0){ p.hp-=10; H(p,ts,'Passou fome',0,-10); if(p.hp<=0) p.dead=true; }
+      if(p.study&&!p.dead){
+        p.study.left--;
+        if(p.study.left<=0){ const c=p.study.course; if(!p.skills.includes(c)) p.skills.push(c); H(p,ts,'Concluiu: '+SKILL_NAME(c)); feed.push({ts,text:p.name+' concluiu '+SKILL_NAME(c)}); p.study=null; }
+      }
+    }
+    if(round%3===0){
+      for(const p of actives){
+        if(!act(p.id)||p.loc!=='mundo'||!p.at) continue;
+        const pr=props[p.at];
+        if(pr&&pr.owner&&pr.owner!==p.id&&!pr.mort&&act(pr.owner)) addBill('rent',p.id,pr.owner,rentRep(p.at),'Estadia em '+CAT[p.at].name,3,ts);
+      }
+    }
+    if(round%5===0){
+      const boss=curPres();
+      if(boss){
+        for(const p of actives){
+          if(p.id===boss||!act(p.id)) continue;
+          const td=p.title&&p.title.buff==='imposto'?Math.max(0,1-p.title.pct/100):1; const amt=Math.round(Math.max(p.money,0)*taxRate/100*td);
+          if(amt>0) addBill('tax',p.id,boss,amt,'Imposto do prefeito ('+taxRate+'%)',3,ts);
+        }
+      }
+      for(const p of actives){
+        if(!act(p.id)||!p.job) continue;
+        let sal=pl[p.job].salary!=null?pl[p.job].salary:PLACES[p.job].sal; if(p.title&&p.title.buff==='salario') sal=Math.round(sal*(1+p.title.pct/100)); const own=pl[p.job].owner;
+        p.money+=sal; H(p,ts,'Salário ('+PLACES[p.job].name+')',sal);
+        if(own&&own!==p.id&&act(own)){ P[own].money-=sal; H(P[own],ts,'Pagou salário a '+p.name,-sal); }
+      }
+    }
+    for(const b of Object.values(bills)){ if(!b.paid&&round-b.round>=b.due) settle(b,true,ts); }
+  };
+  const checkRound=ts=>{ const a=activeFor(ts); if(a.length&&a.every(p=>rolled.has(p.id))) endRound(ts); };
+
+  const entries=[...S.log].sort((a,b)=>(a.ts-b.ts)||(a.id<b.id?-1:1));
+  for(const e of entries){
+    const pr=e.prop?props[e.prop]:null, pn=e.prop&&CAT[e.prop]?CAT[e.prop].name:'';
+    const me_=P[e.by];
+    if(e.type==='send'){
+      if(!act(e.from)||!act(e.to)) continue; const f=P[e.from],t=P[e.to];
+      f.money-=e.amount; t.money+=e.amount;
+      H(f,e.ts,'Enviou para '+t.name+(e.note?' ('+e.note+')':''),-e.amount); H(t,e.ts,'Recebeu de '+f.name+(e.note?' ('+e.note+')':''),e.amount);
+      feed.push({ts:e.ts,text:f.name+' enviou '+fmt(e.amount)+' para '+t.name});
+    }else if(e.type==='chest'){
+      if(!act(e.to)) continue; const t=P[e.to];
+      const v=Math.round(e.amount*(t.cls==='pirata'?1.2:1));
+      t.money+=v; H(t,e.ts,'Abriu um baú do tesouro',v);
+      feed.push({ts:e.ts,text:t.name+' abriu um baú e achou '+fmt(v)});
+    }else if(e.type==='event'){
+      const ev=EVENTS[e.eventId]; if(!ev) continue;
+      for(const p of Object.values(P)){ if(p.joined<=e.ts) applyEv(p,{...ev,ts:e.ts}); }
+      feed.push({ts:e.ts,text:'Evento: '+ev.name+'. '+ev.text});
+      checkRound(e.ts);
+    }else if(e.type==='tax'){
+      if(!act(e.by)) continue; const boss=P[e.by]; let sum=0;
+      for(const p of Object.values(P)){
+        if(p.id===e.by||p.joined>e.ts||p.dead||p.bankrupt) continue;
+        const f=(p.cls==='banqueiro'?0.5:1)*(p.cls==='politico'?0.5:1);
+        const loss=Math.round(Math.max(p.money,0)*0.10*f);
+        p.money-=loss; sum+=loss; H(p,e.ts,'Imposto do presidente',-loss);
+      }
+      boss.money+=sum; H(boss,e.ts,'Imposto arrecadado',sum);
+      feed.push({ts:e.ts,text:boss.name+' cobrou imposto: '+fmt(sum)+' arrecadados'});
+    }else if(e.type==='buy'){
+      if(!pr||pr.owner||!act(e.by)) continue;
+      pr.owner=e.by; P[e.by].money-=e.price; H(P[e.by],e.ts,'Comprou '+pn,-e.price);
+      feed.push({ts:e.ts,text:P[e.by].name+' comprou '+pn+' por '+fmt(e.price)});
+    }else if(e.type==='build'){
+      if(!pr||pr.owner!==e.by||pr.mort||pr.level>=3||!act(e.by)) continue;
+      pr.level++; P[e.by].money-=e.cost; H(P[e.by],e.ts,'Construiu em '+pn+' ('+LEVEL[pr.level]+')',-e.cost);
+      feed.push({ts:e.ts,text:P[e.by].name+' construiu em '+pn+': '+LEVEL[pr.level]});
+    }else if(e.type==='sell'){
+      if(!pr||pr.owner!==e.by||pr.level<1||!act(e.by)) continue;
+      pr.level--; P[e.by].money+=e.amount; H(P[e.by],e.ts,'Vendeu construção em '+pn,e.amount);
+    }else if(e.type==='mortgage'){
+      if(!pr||pr.owner!==e.by||pr.mort||pr.level!==0||!act(e.by)) continue;
+      pr.mort=true; P[e.by].money+=e.amount; H(P[e.by],e.ts,'Hipotecou '+pn,e.amount);
+      feed.push({ts:e.ts,text:P[e.by].name+' hipotecou '+pn});
+    }else if(e.type==='unmortgage'){
+      if(!pr||pr.owner!==e.by||!pr.mort||!act(e.by)) continue;
+      pr.mort=false; P[e.by].money-=e.cost; H(P[e.by],e.ts,'Pagou a hipoteca de '+pn,-e.cost);
+    }else if(e.type==='rent'){
+      if(!pr||pr.owner!==e.to||pr.mort||!act(e.from)||!act(e.to)) continue;
+      const f=P[e.from],t=P[e.to]; f.money-=e.amount; t.money+=e.amount;
+      H(f,e.ts,'Aluguel em '+pn+' para '+t.name,-e.amount); H(t,e.ts,'Aluguel de '+pn+' pago por '+f.name,e.amount);
+      feed.push({ts:e.ts,text:f.name+' pagou '+fmt(e.amount)+' de aluguel em '+pn+' para '+t.name});
+    }else if(e.type==='bank'){
+      if(!act(e.by)) continue; const p=P[e.by]; p.money+=e.amount;
+      H(p,e.ts,(e.amount>0?'Recebeu do banco':'Pagou ao banco')+(e.note?' ('+e.note+')':''),e.amount);
+    }else if(e.type==='bankrupt'){
+      const p=P[e.by]; if(!p||p.bankrupt||p.dead) continue;
+      p.bankrupt=true; p.money=0; p.job=null; p.at=null;
+      Object.values(props).forEach(x=>{ if(x.owner===e.by){x.owner=null;x.level=0;x.mort=false;} });
+      PLACE_IDS.forEach(id=>{ if(pl[id].owner===e.by){pl[id].owner=null;pl[id].level=0;pl[id].salary=null;} });
+      feed.push({ts:e.ts,text:p.name+' faliu e saiu do jogo'});
+      checkRound(e.ts);
+    }else if(e.type==='suicide'){
+      const p=P[e.by]; if(!p||p.bankrupt||p.dead) continue;
+      p.dead=true; p.money=0; p.job=null; p.at=null;
+      Object.values(props).forEach(x=>{ if(x.owner===e.by){x.owner=null;x.level=0;x.mort=false;} });
+      PLACE_IDS.forEach(id=>{ if(pl[id].owner===e.by){pl[id].owner=null;pl[id].level=0;pl[id].salary=null;} });
+      feed.push({ts:e.ts,text:p.name+' desistiu e morreu'});
+      checkRound(e.ts);
+    }else if(e.type==='roll'){
+      if(!act(e.by)||rolled.has(e.by)||me_.joined>e.ts) continue;
+      rolled.add(e.by); me_.rolled=true; me_.lastRoll=e.value+(e.bonus||0);
+      feed.push({ts:e.ts,text:me_.name+' rolou o dado: '+e.value+(e.bonus?' (+'+e.bonus+' do veículo)':'')});
+      checkRound(e.ts);
+    }else if(e.type==='travel'){
+      if(!act(e.by)||!LOCS[e.to]||me_.loc==='transit'||me_.loc===e.to) continue;
+      me_.money-=e.cost; me_.loc='transit'; me_.dest=e.to; me_.at=null; me_.ipl=null;
+      if(e.via==='barco') me_.crime++;
+      H(me_,e.ts,'Viagem para '+LOCS[e.to]+(e.via==='barco'?' (barco clandestino)':''),-e.cost);
+      feed.push({ts:e.ts,text:me_.name+' partiu para '+LOCS[e.to]});
+    }else if(e.type==='arrive'){
+      if(!act(e.by)||me_.loc!=='transit'||me_.dest!==e.to) continue;
+      me_.loc=e.to; me_.dest=null; feed.push({ts:e.ts,text:me_.name+' chegou em '+LOCS[e.to]});
+    }else if(e.type==='exile'){
+      if(!act(e.by)) continue; me_.loc='cidade'; me_.dest=null; me_.at=null; me_.ipl=null;
+      feed.push({ts:e.ts,text:me_.name+' voltou da ilha de mãos vazias'});
+    }else if(e.type==='hurt'){
+      if(!act(e.by)) continue; let dh=Math.floor(e.hp)||0; if(me_.cls==='soldado') dh=Math.round(dh*0.7);
+      me_.hp-=dh; H(me_,e.ts,e.note||'Dano',0,-dh); if(me_.hp<=0) me_.dead=true;
+    }else if(e.type==='iat'){
+      if(!act(e.by)||me_.loc!=='ilha'||!ILHA[e.place]) continue;
+      me_.ipl=e.place; if(e.cost){ me_.money-=e.cost; H(me_,e.ts,'Canoa até '+ILHA[e.place],-e.cost); }
+    }else if(e.type==='at'){
+      if(!act(e.by)||me_.loc!=='mundo'||!CAT[e.country]) continue; me_.at=e.country;
+    }else if(e.type==='food'){
+      if(!act(e.by)) continue; me_.money-=e.cost; me_.food=Math.min(100,me_.food+e.gain);
+      if(e.to&&e.to!==e.by&&act(e.to)){ P[e.to].money+=e.cost; H(P[e.to],e.ts,'Venda de '+e.item+' para '+me_.name,e.cost); }
+      H(me_,e.ts,'Comprou '+e.item,-e.cost);
+    }else if(e.type==='heal'){
+      if(!act(e.by)) continue; me_.money-=e.cost; me_.hp=Math.min(MAXHP,me_.hp+e.gain); H(me_,e.ts,'Consulta no hospital',-e.cost,e.gain);
+    }else if(e.type==='study'){
+      const c=COURSES[e.course]; if(!act(e.by)||!c||me_.study||me_.skills.includes(e.course)) continue;
+      me_.money-=e.cost; me_.study={course:e.course,left:c.rounds}; H(me_,e.ts,'Matrícula: '+c.name,-e.cost);
+      feed.push({ts:e.ts,text:me_.name+' começou '+c.name});
+    }else if(e.type==='vehicle'){
+      if(!act(e.by)) continue; me_.money-=e.cost; me_.vehicle=e.kind; H(me_,e.ts,'Comprou '+e.item,-e.cost);
+      if(e.to&&e.to!==e.by&&act(e.to)){ P[e.to].money+=e.cost; H(P[e.to],e.ts,'Venda de '+e.item+' para '+me_.name,e.cost); }
+      feed.push({ts:e.ts,text:me_.name+' comprou '+e.item});
+    }else if(e.type==='shop'){
+      if(!act(e.by)||me_.skills.includes('ROUPA')) continue;
+      me_.money-=e.cost; me_.skills.push('ROUPA'); H(me_,e.ts,'Comprou roupa social',-e.cost);
+      if(e.to&&e.to!==e.by&&act(e.to)){ P[e.to].money+=e.cost; H(P[e.to],e.ts,'Venda de roupa para '+me_.name,e.cost); }
+    }else if(e.type==='job'){
+      if(!act(e.by)||!PLACES[e.place]) continue;
+      if(e.success){ me_.job=e.place; feed.push({ts:e.ts,text:me_.name+' foi contratado em '+PLACES[e.place].name}); }
+      else feed.push({ts:e.ts,text:me_.name+' não passou na entrevista em '+PLACES[e.place].name});
+    }else if(e.type==='quit'){
+      if(!act(e.by)||!me_.job) continue; feed.push({ts:e.ts,text:me_.name+' saiu do emprego em '+PLACES[me_.job].name}); me_.job=null;
+    }else if(e.type==='loan'){
+      if(!act(e.by)) continue; me_.money+=e.amount; H(me_,e.ts,'Empréstimo do banco',e.amount);
+      addBill('loan',e.by,null,Math.round(e.amount*(1+loanRate/100)),'Empréstimo do banco',4,e.ts);
+    }else if(e.type==='paybill'){
+      const b=bills[e.bill]; if(!b||b.paid||b.payer!==e.by||!act(e.by)) continue; settle(b,false,e.ts);
+    }else if(e.type==='placebuy'){
+      const s=pl[e.place]; if(!s||!PLACES[e.place].owned||s.owner||!act(e.by)||!me_.skills.includes('ADMINISTRACAO')) continue;
+      s.owner=e.by; me_.money-=e.price; H(me_,e.ts,'Comprou a empresa '+PLACES[e.place].name,-e.price);
+      feed.push({ts:e.ts,text:me_.name+' comprou '+PLACES[e.place].name});
+    }else if(e.type==='improve'){
+      const s=pl[e.place]; if(!s||s.owner!==e.by||s.level>=3||!act(e.by)) continue;
+      const others=Object.values(P).filter(q=>q.id!==e.by&&act(q.id)&&q.joined<=e.ts);
+      me_.money-=30*others.length; others.forEach(q=>{q.money+=30;H(q,e.ts,'Benfeitoria de '+me_.name,30);}); s.level++;
+      H(me_,e.ts,'Benfeitoria em '+PLACES[e.place].name,-30*others.length);
+      feed.push({ts:e.ts,text:me_.name+' fez uma benfeitoria em '+PLACES[e.place].name+' (nível '+s.level+')'});
+    }else if(e.type==='setsalary'){
+      const s=pl[e.place]; if(!s||s.owner!==e.by||!act(e.by)) continue; s.salary=Math.max(0,Math.floor(e.amount)||0);
+    }else if(e.type==='setrate'){
+      if(e.by!==curPres()) continue; taxRate=Math.max(0,Math.min(100,Math.floor(e.rate)||0));
+      feed.push({ts:e.ts,text:me_.name+' definiu o imposto em '+taxRate+'%'});
+    }else if(e.type==='setbank'){
+      if(e.by!==curPres()) continue; loanRate=Math.max(0,Math.min(100,Math.floor(e.rate)||0));
+      feed.push({ts:e.ts,text:me_.name+' definiu os juros do banco em '+loanRate+'%'});
+    }else if(e.type==='title'){
+      if(e.by!==curPres()||!act(e.who)) continue;
+      if(e.buff&&['imposto','salario','banco'].includes(e.buff)){ P[e.who].title={name:String(e.name||'Título').slice(0,30),buff:e.buff,pct:Math.max(0,Math.min(100,Math.floor(e.pct)||0))}; feed.push({ts:e.ts,text:me_.name+' titulou '+P[e.who].name+': '+P[e.who].title.name}); }
+      else{ P[e.who].title=null; feed.push({ts:e.ts,text:me_.name+' tirou o título de '+P[e.who].name}); }
+    }else if(e.type==='elect'){
+      if(!act(e.who)) continue; president=e.who; feed.push({ts:e.ts,text:P[e.who].name+' foi eleito presidente'});
+    }else if(e.type==='stop'){
+      const s=pl[e.place]; if(!s||!act(e.by)) continue;
+      const amt=e.base*STOP_MULT[s.level]; me_.money-=amt;
+      if(s.owner&&s.owner!==e.by&&act(s.owner)){ P[s.owner].money+=amt; H(P[s.owner],e.ts,'Visita de '+me_.name+' em '+PLACES[e.place].name,amt); }
+      H(me_,e.ts,'Parou em '+PLACES[e.place].name,-amt);
+      feed.push({ts:e.ts,text:me_.name+' pagou '+fmt(amt)+' em '+PLACES[e.place].name});
+    }else if(e.type==='payeach'){
+      if(!act(e.by)) continue; const others=Object.values(P).filter(q=>q.id!==e.by&&act(q.id)&&q.joined<=e.ts);
+      me_.money-=e.amount*others.length; others.forEach(q=>{q.money+=e.amount;H(q,e.ts,'Recebeu de '+me_.name,e.amount);});
+      H(me_,e.ts,'Pagou a cada jogador',-e.amount*others.length);
+      feed.push({ts:e.ts,text:me_.name+' pagou '+fmt(e.amount)+' a cada jogador'});
+    }else if(e.type==='collecteach'){
+      if(!act(e.by)) continue; const others=Object.values(P).filter(q=>q.id!==e.by&&act(q.id)&&q.joined<=e.ts);
+      me_.money+=e.amount*others.length; others.forEach(q=>{q.money-=e.amount;H(q,e.ts,'Pagou a '+me_.name,-e.amount);});
+      H(me_,e.ts,'Recebeu de cada jogador',e.amount*others.length);
+      feed.push({ts:e.ts,text:me_.name+' recebeu '+fmt(e.amount)+' de cada jogador'});
+    }
+  }
+  const all=Object.values(P);
+  const dead=all.filter(p=>p.dead);
+  const standing=all.filter(p=>!p.dead&&!p.bankrupt).sort((a,b)=>b.money-a.money);
+  const last=all.length>=2&&standing.length<=1;
+  C={P,props,pl,bills,round,rolled:[...rolled],taxRate,loanRate,president:curPres(),over:dead.length>0||last,dead,reason:dead.length?'death':'last',winner:standing[0]||null,feed:feed.reverse()};
+}
+const me=()=>C.P[S.uid];
+const presId=()=>C.president||null;
+const ready=()=>['players','log','chests','votes','game','catalog','charges','island','iguess'].every(k=>S.loaded[k]);
+const alive=id=>C.P[id]&&!C.P[id].dead&&!C.P[id].bankrupt;
+const out=()=>{const m=me();return !!m&&(m.dead||m.bankrupt);};
+
+function ownsGroup(owner,g){
+  const ids=IDS.filter(id=>CAT[id].g===g&&CAT[id].kind==='country'); if(!ids.length) return false;
+  return ids.every(id=>C.props[id].owner===owner&&!C.props[id].mort);
+}
+function rentFor(id,payer,dice){
+  const c=cat(id),pr=C.props[id]; if(!pr||!pr.owner) return 0; let r;
+  if(c.kind==='company') r=dice*50;
+  else { r=c.rent[pr.level]; if(pr.level===0&&ownsGroup(pr.owner,c.g)) r*=2; }
+  const pl=C.P[payer]; if(pl&&pl.cls==='nomade') r*=0.75;
+  return Math.round(r);
+}
+function buyCost(id){ const c=cat(id),m=me(); return Math.round(c.price*(m&&m.cls==='comerciante'?0.85:1)); }
+function buildCost(id){ const c=cat(id),pr=C.props[id],m=me(); const base=pr.level>=2?c.hotel:c.casa; return Math.round(base*(m&&m.cls==='construtor'?0.75:1)); }
+function sellValue(id){ const c=cat(id),pr=C.props[id]; return Math.round((pr.level>=3?c.hotel:c.casa)/2); }
+
+/* ---------- telas ---------- */
+function bar(p){const pct=Math.max(0,Math.min(100,p.hp/MAXHP*100));return '<div class="bar'+(pct<30?' low':'')+'" role="img" aria-label="Vida '+Math.max(0,p.hp)+' de '+MAXHP+'"><i style="width:'+pct+'%"></i></div>';}
+function playerOptions(ids,selId){return ids.map(id=>'<option value="'+esc(id)+'"'+(id===selId?' selected':'')+'>'+esc(C.P[id].name)+'</option>').join('');}
+function msgHtml(){return S.msg?'<div class="msg '+S.msg.kind+'" role="status">'+esc(S.msg.text)+'</div>':'';}
+function clsName(k){return CLASSES[k]?CLASSES[k].name:'';}
+
+/* ---------- Jogo 2: telas da cidade ---------- */
+const has=k=>{const m=me();return !!m&&m.skills.includes(k);};
+const placeOwner=id=>C.pl&&C.pl[id]?C.pl[id].owner:null;
+function bankDisc(){ const m=me(); if(!m) return 0; let d=has('ECONOMIA')?0.2:0; if(m.title&&m.title.buff==='banco') d+=m.title.pct/100; return Math.min(1,d); }
+const BUFFS={imposto:'Paga menos imposto',salario:'Salário maior',banco:'Paga menos ao banco'};
+function pcost(base,id,food){
+  let c=base; const o=placeOwner(id);
+  if(food&&has('GASTRONOMIA')) c*=0.7;
+  if(!o) c*=(1-bankDisc());
+  if(o===S.uid) c=0;
+  return Math.round(c);
+}
+function jobChance(m){ return Math.min(95,40+10*m.skills.length); }
+function salaryOf(id){ const s=C.pl[id]; return s&&s.salary!=null?s.salary:PLACES[id].sal; }
+function diceBonus(m){ const v=VEHICLES.find(x=>x.id===m.vehicle); return v?v.bonus:0; }
+function foodBar(p){ const pct=Math.max(0,Math.min(100,p.food)); return '<div class="bar'+(pct<30?' low':'')+'" role="img" aria-label="Fome: comida em '+pct+' de 100"><i style="width:'+pct+'%"></i></div>'; }
+
+function meHtml(){
+  const m=me(); const dis=C.over?' disabled':'';
+  const locCard=S.locCode?'<div class="card stack"><h2>Tabuleiro lido</h2><div>QR do tabuleiro: <b>'+esc(LOCS[S.locCode])+'</b></div><div class="row"><button class="btn" data-act="arrive">Cheguei aqui</button><button class="btn ghost" data-act="locNo">Cancelar</button></div>'+msgHtml()+'</div>':'';
+  const myBills=Object.values(C.bills).filter(b=>b.payer===S.uid&&!b.paid);
+  const toMe=Object.values(C.bills).filter(b=>b.to===S.uid&&!b.paid);
+  const waiting=Object.values(C.P).filter(p=>alive(p.id)&&!p.rolled).map(p=>p.name);
+  const veh=VEHICLES.find(v=>v.id===m.vehicle);
+  let h=locCard+'<div class="card stack"><div class="row"><h2 style="margin:0">Seu status</h2><span class="chip">'+esc(clsName(m.cls))+'</span></div>'+
+    '<div class="big">'+fmt(m.money)+'</div>'+
+    '<div><div class="row small"><span class="muted">Vida</span><span class="money">'+Math.max(0,m.hp)+' / '+MAXHP+'</span></div>'+bar(m)+'</div>'+
+    '<div><div class="row small"><span class="muted">Comida (fome)</span><span class="money">'+Math.max(0,m.food)+' / 100</span></div>'+foodBar(m)+'<div class="muted small">Perde 10 por rodada. Com 0 você perde 10 de vida por rodada.</div></div>'+
+    '<div class="rents" style="grid-template-columns:repeat(2,1fr)"><div>Local<b>'+esc(locName(m))+(m.loc==='mundo'&&m.at&&CAT[m.at]?' · '+esc(CAT[m.at].name):'')+'</b></div>'+
+    '<div>Emprego<b>'+(m.job?esc(PLACES[m.job].name):'Sem emprego')+'</b></div>'+
+    '<div>Veículo<b>'+(veh?esc(veh.name)+' (+'+veh.bonus+')':'A pé')+'</b></div>'+
+    '<div>Procurado<b>'+(m.crime?m.crime+' crime'+(m.crime>1?'s':''):'Não')+'</b></div><div>Título<b>'+(m.title?esc(m.title.name)+' ('+BUFFS[m.title.buff]+' '+m.title.pct+'%)':'Nenhum')+'</b></div><div>Estudando<b>'+(m.study?esc(COURSES[m.study.course].name)+' ('+m.study.left+' rod.)':'Nada')+'</b></div></div></div>';
+  h+='<div class="card stack"><div class="row"><h2 style="margin:0">Rodada '+(C.round+1)+'</h2><span class="chip">Imposto <b>'+C.taxRate+'%</b></span></div>'+
+    (m.rolled?'<div>Você rolou <b>'+m.lastRoll+'</b>. Esperando: <b>'+(waiting.length?esc(waiting.join(', ')):'ninguém')+'</b>.</div>'
+             :'<button class="btn" data-act="roll"'+dis+'>Rolar o dado'+(diceBonus(m)?' (+'+diceBonus(m)+' do veículo)':'')+'</button><div class="muted small">A rodada passa quando todos rolarem uma vez.</div>')+
+    '<div class="list">'+Object.values(C.P).filter(p=>alive(p.id)).map(p=>'<div class="item"><span>'+esc(p.name)+'</span><span class="muted">'+(p.rolled?'rolou '+p.lastRoll:'ainda não rolou')+'</span></div>').join('')+'</div>'+
+    '<div class="muted small">A cada 3 rodadas: aluguel de quem está num país alheio. A cada 5: imposto do prefeito e salários.</div>'+msgHtml()+'</div>';
+  h+='<div class="card stack"><h2>Contas a pagar</h2>'+(myBills.length?myBills.map(b=>{
+    const to=b.to&&C.P[b.to]?C.P[b.to].name:'Banco';
+    return '<div class="event"><div><b>'+fmt(b.amount)+' · '+esc(b.reason)+'</b><span class="small muted">Para '+esc(to)+'. Cobrança automática (+10%) após a rodada '+(b.round+b.due)+'.</span></div><button class="btn small" data-act="payBill" data-id="'+esc(b.id)+'"'+dis+'>Pagar</button></div>';
+  }).join(''):'<div class="muted small">Nenhuma conta pendente.</div>')+
+  (toMe.length?'<h2 style="margin-top:6px">A receber</h2>'+toMe.map(b=>'<div class="item"><span>'+esc(b.reason)+' ('+esc(C.P[b.payer]?C.P[b.payer].name:'')+')</span><span class="money">'+fmt(b.amount)+'</span></div>').join(''):'')+'</div>';
+  h+='<div class="card stack"><h2>Currículo</h2>'+(m.skills.length?'<div class="list">'+m.skills.map(k=>'<div class="item"><span>'+esc(SKILL_NAME(k))+'</span><span class="muted small">+10% emprego</span></div>').join('')+'</div>':'<div class="muted small">Vazio. Estude na escola ou compre roupa social no shopping.</div>')+
+    '<div class="muted small">Chance de passar numa entrevista: <b>'+jobChance(m)+'%</b></div></div>';
+  return h;
+}
+
+function eachBox(id){
+  return '<div class="card stack"><h2>Casa do tabuleiro ('+esc(PLACES[id].name)+')</h2><div><label for="eachAmt">Valor por jogador</label><input type="number" id="eachAmt" inputmode="numeric" min="1" placeholder="0"></div>'+
+    '<div class="row"><button class="btn" data-act="payEach"'+(C.over?' disabled':'')+'>Pagar a cada um</button><button class="btn ghost" data-act="collectEach"'+(C.over?' disabled':'')+'>Receber de cada um</button></div>'+
+    '<div class="muted small">Use quando o talão manda pagar ou receber um valor de todos os jogadores.</div></div>';
+}
+function placePanel(id){
+  const m=me(), P0=PLACES[id], s=C.pl[id], dis=C.over?' disabled':'';
+  const owner=s.owner&&C.P[s.owner]; const mine=s.owner===S.uid;
+  const away=m.loc!=='cidade'&&id!=='AEROPORTO';
+  let h='<div class="card stack"><div class="row"><div class="title">'+esc(P0.name)+'</div>'+(P0.owned?'<span class="chip">Empresa</span>':'<span class="chip">Público</span>')+'</div>';
+  if(P0.owned) h+='<div class="row small"><span class="muted">Dono</span><b>'+(owner?esc(owner.name)+(mine?' (você)':''):'Livre')+'</b></div>'+
+    '<div class="row small"><span class="muted">Benfeitorias</span><b>'+s.level+' de 3</b></div>';
+  h+='<div class="row small"><span class="muted">Salário</span><b>'+fmt(salaryOf(id))+' a cada 5 rodadas</b></div>';
+  if(away) return h+'<div class="msg err">Você está em '+esc(locName(m))+'. Vá ao aeroporto para voltar à cidade.</div>'+msgHtml()+'</div>';
+  h+=msgHtml()+'</div>';
+  if(P0.owned){
+    h+='<div class="card stack"><h2>Empresa</h2>';
+    if(!s.owner){
+      h+=has('ADMINISTRACAO')?'<button class="btn" data-act="placeBuy" data-id="'+id+'"'+dis+'>Comprar por '+fmt(P0.price)+'</button>':'<div class="muted small">Sem dono. Para comprar, é preciso a faculdade de Administração ('+fmt(P0.price)+').</div>';
+    }else if(mine){
+      const others=Object.values(C.P).filter(q=>q.id!==S.uid&&alive(q.id)).length;
+      h+='<div><label for="salIn">Salário dos funcionários</label><input type="number" id="salIn" inputmode="numeric" min="0" value="'+salaryOf(id)+'"></div>'+
+        '<button class="btn ghost" data-act="setSalary" data-id="'+id+'"'+dis+'>Salvar salário</button>'+
+        '<button class="btn" data-act="improve" data-id="'+id+'"'+((s.level>=3||C.over)?' disabled':'')+'>Fazer benfeitoria (paga '+fmt(30*others)+')</button>'+
+        '<div class="muted small">Cada benfeitoria paga $30 a cada jogador. Com 2, quem para aqui paga o dobro; com 3, o triplo.</div>';
+    }else h+='<div class="muted small">Dono: '+esc(owner.name)+'.</div>';
+    const base=P0.board||[];
+    if(base.length){
+      const mult=STOP_MULT[s.level]; const uniq=[...new Set(base)];
+      h+='<h2 style="margin-top:6px">Parei numa casa deste lugar</h2><div class="muted small">Multiplicador atual: ×'+mult+'. Paga ao '+(owner&&!mine?'dono':'banco')+'.</div><div class="row" style="flex-wrap:wrap;justify-content:flex-start">'+
+        uniq.map(v=>'<button class="btn small ghost" data-act="stop" data-id="'+id+'" data-base="'+v+'"'+dis+'>Casa de '+fmt(v)+' → '+fmt(v*mult)+'</button>').join('')+'</div>';
+    }
+    h+='</div>';
+  }
+  if(id==='ESCOLA'){
+    h+='<div class="card stack"><h2>Cursos</h2>'+(m.study?'<div class="msg">Você está estudando '+esc(COURSES[m.study.course].name)+' ('+m.study.left+' rodada'+(m.study.left>1?'s':'')+').</div>':'')+
+      Object.entries(COURSES).map(([k,c])=>{
+        const done=m.skills.includes(k), cost=pcost(c.cost,id);
+        return '<div class="event"><div><b>'+esc(c.name)+' <span class="muted small">'+c.kind+'</span></b><span class="small muted">'+esc(c.desc)+' '+c.rounds+' rodada'+(c.rounds>1?'s':'')+'.</span></div>'+
+          (done?'<span class="chip">Feito</span>':'<button class="btn small" data-act="study" data-id="'+k+'"'+((m.study||C.over)?' disabled':'')+'>'+fmt(cost)+'</button>')+'</div>';
+      }).join('')+'</div>';
+  }
+  if(FOODS[id]){
+    h+='<div class="card stack"><h2>Comida</h2>'+FOODS[id].map(f=>'<div class="event"><div><b>'+esc(f.name)+'</b><span class="small muted">+'+f.gain+' de comida</span></div><button class="btn small" data-act="eat" data-id="'+id+'" data-food="'+f.id+'"'+dis+'>'+fmt(pcost(f.cost,id,true))+'</button></div>').join('')+
+      (has('GASTRONOMIA')?'<div class="muted small">Desconto de Gastronomia aplicado.</div>':'')+'</div>';
+  }
+  if(id==='CONCESSIONARIA'){
+    h+='<div class="card stack"><h2>Veículos</h2>'+VEHICLES.map(v=>'<div class="event"><div><b>'+esc(v.name)+'</b><span class="small muted">+'+v.bonus+' no dado'+(m.vehicle===v.id?' · você tem':'')+'</span></div><button class="btn small" data-act="vehicle" data-id="'+v.id+'"'+((m.vehicle===v.id||C.over)?' disabled':'')+'>'+fmt(pcost(v.cost,id))+'</button></div>').join('')+'</div>';
+  }
+  if(id==='SHOPPING'){
+    h+='<div class="card stack"><h2>Lojas</h2><div class="event"><div><b>Roupa social</b><span class="small muted">Entra no currículo (+10% emprego).</span></div>'+(m.skills.includes('ROUPA')?'<span class="chip">Você tem</span>':'<button class="btn small" data-act="shop"'+dis+'>'+fmt(pcost(60,id))+'</button>')+'</div></div>';
+  }
+  if(id==='HOSPITAL'){
+    const gain=Math.round(30*(has('MEDICINA')?1.5:1));
+    h+='<div class="card stack"><h2>Consulta</h2><div class="muted small">Cura '+gain+' de vida.</div><button class="btn" data-act="heal"'+((C.over||m.hp>=MAXHP)?' disabled':'')+'>Consultar por '+fmt(pcost(50,id))+'</button></div>';
+  }
+  if(id==='AEROPORTO'){ h+=travelHtml(); }
+  if(id==='BANCO'){
+    h+='<div class="card stack"><h2>Empréstimo</h2><div class="muted small">Você recebe agora e paga '+C.loanRate+'% de juros em até 4 rodadas (taxa definida pelo prefeito).'+'</div><div class="row">'+[100,200,300].map(v=>'<button class="btn small ghost" data-act="loan" data-amt="'+v+'"'+dis+'>'+fmt(v)+'</button>').join('')+'</div></div>'+eachBox(id);
+  }
+  if(id==='PREFEITURA'){
+    const pr=C.president&&C.P[C.president];
+    h+='<div class="card stack"><h2>Prefeito</h2><div class="title">'+(pr?esc(pr.name):'Ninguém ainda')+'</div><div class="small muted">Imposto atual: '+C.taxRate+'% a cada 5 rodadas.</div><button class="btn ghost" data-act="goPower">Ir para a eleição</button></div>'+eachBox(id);
+  }
+  if(id!=='ESCOLA'||true){
+    const isMine=m.job===id;
+    h+='<div class="card stack"><h2>Emprego</h2>'+(isMine?'<div>Você trabalha aqui. Salário de '+fmt(salaryOf(id))+' a cada 5 rodadas.</div><button class="btn ghost" data-act="quit"'+dis+'>Pedir demissão</button>':
+      '<div class="muted small">'+(m.job?'Você já trabalha em '+esc(PLACES[m.job].name)+'. Conseguir outro troca o emprego. ':'')+'Chance de passar: <b>'+jobChance(m)+'%</b> (40% + 10% por item do currículo).</div><button class="btn" data-act="job" data-id="'+id+'"'+dis+'>Quero emprego</button>')+'</div>';
+  }
+  return h;
+}
+function cityHtml(){
+  const id=PLACES[S.place]?S.place:PLACE_IDS[0];
+  return '<div class="card stack"><h2>Onde você está na cidade</h2><div><label for="placeSel">Lugar</label><select id="placeSel">'+PLACE_IDS.map(x=>'<option value="'+x+'"'+(x===id?' selected':'')+'>'+esc(PLACES[x].name)+(C.pl[x].owner&&C.P[C.pl[x].owner]?' — '+esc(C.P[C.pl[x].owner].name):'')+'</option>').join('')+'</select></div>'+
+    '<div class="muted small">Escaneie o QR do lugar com a câmera e ele abre aqui.</div></div>'+placePanel(id);
+}
+function resetHtml(){
+  return '<div class="card stack"><h2>Resetar / morrer</h2><div class="muted small">Você morre, devolve suas terras e lugares ao banco e volta para a escolha de nome e classe, para recomeçar do zero.</div>'+
+  (S.confirmReset?'<div class="msg err">Tem certeza? Isso não dá para desfazer.</div><div class="row"><button class="btn danger" data-act="reset">Sim, morrer e recomeçar</button><button class="btn ghost" data-act="resetNo">Cancelar</button></div>'
+                  :'<button class="btn ghost small" data-act="resetAsk">Resetar / morrer</button>')+'</div>';
+}
+function moreHtml(){
+  const subs=[['chest','Baús'],['power','Poder'],['world','Mundo']];
+  const body={chest:chestHtml,power:powerHtml,world:worldHtml}[S.sub]||chestHtml;
+  return '<div class="row" style="gap:6px">'+subs.map(([k,n])=>'<button class="btn small '+(S.sub===k?'':'ghost')+'" style="flex:1" data-act="sub" data-v="'+k+'">'+n+'</button>').join('')+'</div>'+body()+resetHtml();
+}
+function rouletteShow(chance,win,placeName,done){
+  const r=$('#roulette'); if(!r) return done();
+  const w=r.querySelector('.wheel'); const a=win?Math.random()*chance*3.6*0.9+chance*0.18:chance*3.6+Math.random()*(360-chance*3.6)*0.9+(360-chance*3.6)*0.05;
+  w.style.transition='none'; w.style.transform='rotate(0deg)';
+  w.style.background='conic-gradient(var(--good) 0 '+chance+'%, var(--bad) '+chance+'% 100%)';
+  r.querySelector('.rt').textContent='Entrevista: '+placeName+' ('+chance+'% de chance)';
+  r.querySelector('.rr').textContent='';
+  r.hidden=false; void w.offsetWidth;
+  w.style.transition='transform 3.4s cubic-bezier(.15,.7,.2,1)'; w.style.transform='rotate('+(360*4-a)+'deg)';
+  setTimeout(()=>{ r.querySelector('.rr').textContent=win?'Contratado!':'Não passou desta vez.'; setTimeout(()=>{ r.hidden=true; done(); },1400); },3600);
+}
+
+/* ---------- Jogo 3: ilha dos piratas ---------- */
+const PIRATAS={BARBAAZUL:'Barba Azul',CAOLHO:'Capitão Caolho',COOK:'Cozinheiro Cook',PAPAGAIO:'O Papagaio',SEXTA:'Índio Sexta-Feira',MARUJO:'Marujo Doido'};
+const TESOUROS={COROA:{name:'A Coroa do Rei',val:400},DIAMANTES:{name:'Baú com Diamantes',val:350},OURO:{name:'Baú com Moedas de Ouro',val:300},PATACAS:{name:'Um Milhão de Patacas',val:250},POLVORA:{name:'Pólvora e Mosquetes',val:200},RUM:{name:'Barris de Rum',val:150}};
+const ILHA={GRANDEFIGUEIRA:'Grande Figueira',CACHOEIRA:'Cachoeira Branca',PRAIACAVEIRA:'Praia da Caveira',CAVERNA:'Caverna Funda',MONTE:'Monte Negro',ROCHA:'Rocha Redonda',COQUEIROS:'Três Coqueiros',RIACHO:'Riacho Doce',FLORESTA:'Floresta dos Canibais'};
+const ALLP=Object.keys(PIRATAS).map(k=>'P_'+k), ALLT=Object.keys(TESOUROS).map(k=>'T_'+k), ALLL=Object.keys(ILHA).map(k=>'L_'+k);
+const cardName=c=>c[0]==='P'?PIRATAS[c.slice(2)]:c[0]==='T'?TESOUROS[c.slice(2)].name:ILHA[c.slice(2)];
+const FEE_GUESS=30, FEE_CANOE=10, FEE_BOAT=20;
+const shuffle=a=>{a=a.slice();for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]];}return a;};
+const pick1=a=>a[Math.floor(Math.random()*a.length)];
+const rd=()=>S.island&&S.island.status==='on'?S.island:null;
+const inRound=()=>{const r=rd();return !!r&&(r.players||[]).includes(S.uid);};
+const onIsland=()=>Object.values(C.P).filter(p=>alive(p.id)&&p.loc==='ilha');
+const myCards=()=>{const r=rd();return (r&&r.hands&&r.hands[S.uid])||[];};
+function openGuess(){ const r=rd(); if(!r) return null; return Object.entries(S.iguess).map(([id,g])=>({id,...g})).filter(g=>g.rid===r.rid&&!g.done).sort((a,b)=>a.ts-b.ts)[0]||null; }
+function locName(m){ return m.loc==='transit'?'A caminho: '+(LOCS[m.dest]||''):LOCS[m.loc]; }
+
+function travelHtml(){
+  const m=me();
+  if(m.loc==='transit') return '<div class="card stack"><h2>Em viagem</h2><div>Você está a caminho de <b>'+esc(LOCS[m.dest])+'</b>. Ao chegar, toque em "Ler QR" e escaneie o QR do tabuleiro de lá.</div></div>';
+  const dis=C.over?' disabled':''; const dests=Object.entries(LOCS).filter(([k])=>k!==m.loc);
+  const boats=dests.filter(([k])=>k==='ilha'||m.loc==='ilha');
+  return '<div class="card stack"><h2>Avião</h2>'+dests.map(([k,n])=>'<div class="event"><div><b>'+esc(n)+'</b><span class="small muted">'+(k==='mundo'?'Aqui se compram os países.':k==='ilha'?'Caça ao tesouro dos piratas.':'Volta para a cidade.')+'</span></div><button class="btn small" data-act="fly" data-id="'+k+'"'+dis+'>'+fmt(pcost(50,'AEROPORTO'))+'</button></div>').join('')+'</div>'+
+    (boats.length?'<div class="card stack"><h2>Mercado negro: barco clandestino</h2><div class="muted small">Um estranho te leva de barco por '+fmt(FEE_BOAT)+'. É crime: você fica procurado (a prisão vem depois).</div>'+boats.map(([k,n])=>'<div class="event"><div><b>'+esc(n)+'</b></div><button class="btn small ghost" data-act="boat" data-id="'+k+'"'+dis+'>'+fmt(FEE_BOAT)+'</button></div>').join('')+'</div>':'');
+}
+function cardLine(c,state){ return '<div class="item"><span>'+esc(cardName(c))+'</span><span class="muted small">'+state+'</span></div>'; }
+function ilhaHtml(){
+  const m=me(), dis=C.over?' disabled':''; const r=rd(); const pres=onIsland();
+  let h='';
+  if(m.loc!=='ilha'){
+    h+='<div class="card stack"><h2>Ilha dos piratas</h2><div>Você não está na ilha ('+esc(locName(m))+'). Viaje pra lá para caçar o tesouro.</div><div class="muted small">Na ilha agora: '+(pres.length?esc(pres.map(p=>p.name).join(', ')):'ninguém')+'.</div></div>'+travelHtml();
+    return h+lastIsland();
+  }
+  h+='<div class="card stack"><h2>Ilha dos piratas</h2><div class="small">Na ilha agora: <b>'+esc(pres.map(p=>p.name).join(', '))+'</b></div>'+
+    '<div><label for="ipSel">Onde você está</label><select id="ipSel">'+Object.entries(ILHA).map(([k,n])=>'<option value="'+k+'"'+(k===S.ipSel?' selected':'')+'>'+esc(n)+'</option>').join('')+'</select></div>'+
+    '<div class="row"><button class="btn" data-act="iat"'+dis+'>Cheguei aqui</button><button class="btn ghost" data-act="canoe"'+dis+'>Canoa ('+fmt(FEE_CANOE)+')</button></div>'+
+    '<div class="small">Seu lugar: <b>'+(m.ipl?esc(ILHA[m.ipl]):'nenhum ainda')+'</b></div>'+
+    '<div class="muted small">A canoa te leva ao lugar escolhido sem gastar o dado. Ou escaneie o QR do lugar.</div>'+msgHtml()+'</div>';
+  if(!r){
+    h+='<div class="card stack"><h2>Caça ao tesouro</h2>'+(pres.length>=2?'<div>Já tem '+pres.length+' jogadores na ilha. Dá pra começar.</div><button class="btn" data-act="islandStart"'+dis+'>Começar a caça</button><div class="muted small">O app esconde 1 pirata, 1 tesouro e 1 lugar e reparte o resto das cartas entre vocês.</div>':'<div>Precisa de pelo menos 2 jogadores na ilha para começar.</div>')+'</div>'+lastIsland();
+    return h+travelHtml();
+  }
+  if(!inRound()) return h+'<div class="card">Há uma caça em andamento. Você chegou depois, então espere a próxima.</div>'+travelHtml();
+  const g=openGuess(); const mine=myCards();
+  const shownToMe=Object.values(S.iguess).filter(x=>x.rid===r.rid&&x.by===S.uid&&x.shown).map(x=>x.shown.card);
+  h+='<div class="card stack"><h2>Suas cartas</h2><div class="muted small">Essas não fazem parte do segredo.</div><div class="list">'+(mine.length?mine.map(c=>cardLine(c,'sua')).join(''):'<div class="muted">Você ficou sem cartas.</div>')+'</div></div>';
+  if(g&&g.order[g.idx]===S.uid){
+    const match=mine.filter(c=>c===g.p||c===g.t||c===g.l);
+    h+='<div class="card stack"><h2>Prove que não</h2><div><b>'+esc(C.P[g.by]?C.P[g.by].name:'')+'</b> chutou: '+esc(cardName(g.p))+', '+esc(cardName(g.t))+', '+esc(cardName(g.l))+'.</div>'+
+      (match.length?'<div class="muted small">Você tem uma dessas cartas. Escolha qual mostrar. Só ele vai ver.</div>'+match.map(c=>'<button class="btn" data-act="showCard" data-card="'+c+'">Mostrar: '+esc(cardName(c))+'</button>').join(''):'<div class="muted small">Você não tem nenhuma. Passando para o próximo...</div>')+'</div>';
+  }
+  if(g){
+    h+='<div class="card stack"><h2>Palpite em andamento</h2><div>'+esc(C.P[g.by]?C.P[g.by].name:'')+': '+esc(cardName(g.p))+' + '+esc(cardName(g.t))+' em '+esc(cardName(g.l))+'.</div><div class="muted small">Esperando '+esc(C.P[g.order[g.idx]]?C.P[g.order[g.idx]].name:'')+'.</div>'+
+      (g.by===S.uid&&Date.now()-(g.idxAt||g.ts)>45000?'<button class="btn small ghost" data-act="skipResp">Pular quem está demorando</button>':'')+'</div>';
+  }else{
+    const sel=(id,arr)=>'<div><label for="'+id+'">'+(id==='gsP'?'Pirata':'Tesouro')+'</label><select id="'+id+'">'+arr.map(c=>'<option value="'+c+'">'+esc(cardName(c))+'</option>').join('')+'</select></div>';
+    h+='<div class="card stack"><h2>Dar um palpite</h2>'+(m.ipl?'<div class="small">Lugar do palpite: <b>'+esc(ILHA[m.ipl])+'</b> (onde você está). Custa '+fmt(Math.round(FEE_GUESS*(1-bankDisc())))+'.</div>'+sel('gsP',ALLP)+sel('gsT',ALLT)+'<button class="btn" data-act="guess"'+dis+'>Palpitar</button>':'<div class="muted">Confirme onde você está para palpitar.</div>')+'</div>';
+  }
+  const hist=Object.entries(S.iguess).map(([id,x])=>({id,...x})).filter(x=>x.rid===r.rid&&x.done).sort((a,b)=>b.ts-a.ts).slice(0,10);
+  const known=new Set([...mine,...shownToMe]);
+  h+='<div class="card stack"><h2>Caderno</h2><div class="muted small">Riscado = já sabe que não é o segredo.</div>'+
+    [['Piratas',ALLP],['Tesouros',ALLT],['Lugares',ALLL]].map(([t,arr])=>'<div><b class="small">'+t+'</b><div class="list">'+arr.map(c=>cardLine(c,mine.includes(c)?'sua carta':shownToMe.includes(c)?'te mostraram':'pode ser')).join('')+'</div></div>').join('')+
+    '<div class="muted small">Ainda possíveis: '+[ALLP,ALLT,ALLL].map(a=>a.filter(c=>!known.has(c)).length).join(' / ')+' (piratas / tesouros / lugares).</div></div>';
+  h+='<div class="card stack"><h2>Palpites feitos</h2><div class="list">'+(hist.length?hist.map(x=>{ const by=C.P[x.by]?C.P[x.by].name:''; let res; if(x.shown) res=x.shown.by===S.uid?'<b>você mostrou</b>':(x.by===S.uid?'<b>'+esc(cardName(x.shown.card))+'</b> (mostrada a você)':esc(C.P[x.shown.by]?C.P[x.shown.by].name:'')+' mostrou uma carta'); else res='ninguém tinha'; return '<div class="item"><span>'+esc(by)+': '+esc(cardName(x.p))+', '+esc(cardName(x.t))+', '+esc(cardName(x.l))+'</span><span class="muted small">'+res+'</span></div>'; }).join(''):'<div class="muted">Nenhum palpite ainda.</div>')+'</div></div>';
+  h+='<div class="card stack"><h2>Descobri!</h2><div class="muted small">Pode dizer de qualquer lugar. Se acertar, leva o tesouro e os outros voltam pra cidade machucados e mais pobres. Se errar, é você que perde vida e dinheiro e volta pra cidade.</div>'+
+    '<div><label for="acP">Pirata</label><select id="acP">'+ALLP.map(c=>'<option value="'+c+'">'+esc(cardName(c))+'</option>').join('')+'</select></div>'+
+    '<div><label for="acT">Tesouro</label><select id="acT">'+ALLT.map(c=>'<option value="'+c+'">'+esc(cardName(c))+'</option>').join('')+'</select></div>'+
+    '<div><label for="acL">Lugar</label><select id="acL">'+ALLL.map(c=>'<option value="'+c+'">'+esc(cardName(c))+'</option>').join('')+'</select></div>'+
+    '<button class="btn danger" data-act="accuse"'+dis+'>Descobri!</button></div>';
+  return h+travelHtml();
+}
+function lastIsland(){
+  const x=S.island&&S.island.result; if(!x) return '';
+  return '<div class="card stack"><h2>Última caça</h2><div>'+esc(x.text)+'</div><div class="muted small">Segredo: '+esc(cardName(x.secret.p))+', '+esc(cardName(x.secret.t))+', '+esc(cardName(x.secret.l))+'.</div></div>';
+}
+function islandTick(){
+  if(!ready()||!db||!S.uid||!S.canWrite) return;
+  const r=rd(); if(!r) return; const g=openGuess(); if(!g||g.order[g.idx]!==S.uid) return;
+  if(myCards().some(c=>c===g.p||c===g.t||c===g.l)) return;
+  const key=g.id+':'+g.idx; if(S.tick===key) return; S.tick=key;
+  const ni=g.idx+1;
+  db.doc('iguess/'+g.id).update({idx:ni,idxAt:Date.now(),done:ni>=g.order.length}).catch(()=>{S.tick=null;});
+}
+async function scanFile(f){
+  if(!f) return;
+  let text=null;
+  try{
+    const bmp=await createImageBitmap(f);
+    if('BarcodeDetector' in window){ try{ const d=new BarcodeDetector({formats:['qr_code']}); const r=await d.detect(bmp); if(r.length) text=r[0].rawValue; }catch(e){} }
+    if(!text&&typeof jsQR!=='undefined'){
+      const sc=Math.min(1,1100/Math.max(bmp.width,bmp.height)); const w=Math.round(bmp.width*sc), h=Math.round(bmp.height*sc);
+      const cv=document.createElement('canvas'); cv.width=w; cv.height=h; const x=cv.getContext('2d'); x.drawImage(bmp,0,0,w,h);
+      const im=x.getImageData(0,0,w,h); const r=jsQR(im.data,w,h,{inversionAttempts:'attemptBoth'}); if(r) text=r.data;
+    }
+  }catch(e){}
+  if(!text) return say('err','Não achei um QR nessa foto. Chegue mais perto, deixe o QR inteiro e bem iluminado, ou digite o código.');
+  const code=String(text).split('#').pop();
+  if(handleCode(code)){ render(); window.scrollTo(0,0); } else say('err','Li o QR, mas não reconheci esse código: '+code);
+}
+
+function joinHtml(){
+  return '<div class="card stack"><h2>Entrar no jogo</h2>'+
+  '<div><label for="nick">Seu nome de jogador</label><input type="text" id="nick" maxlength="20" autocomplete="off" placeholder="Ex: Capitão Caolho"></div>'+
+  '<div class="classes">'+Object.entries(CLASSES).map(([k,c],i)=>'<label class="cls" for="cls_'+k+'"><input type="radio" name="cls" id="cls_'+k+'" value="'+k+'"'+(i===0?' checked':'')+'><b>'+c.name+'</b><small>'+c.desc+'</small></label>').join('')+'</div>'+
+  '<div class="muted small">Você começa com '+fmt(START)+' e '+MAXHP+' de vida.</div>'+
+  '<button class="btn" data-act="join">Entrar</button>'+msgHtml()+'</div>';
+}
+function rcode(prefix,n){ const abc='ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; let c=prefix; for(let k=0;k<n;k++) c+=abc[Math.floor(Math.random()*abc.length)]; return c; }
+function qrText(code){ const base=(S.game.appUrl||'').split('#')[0]; return base?base+'#'+code:code; }
+function payCard(){
+  if(!S.payCode) return '';
+  const code=S.payCode, ch=S.charges[code]; const m=me();
+  let h='<div class="card stack"><h2>Pagar cobrança</h2>';
+  if(!ch) return h+'<div>Não achei a cobrança <code>'+esc(code)+'</code>. Confira o código.</div><button class="btn ghost" data-act="payClose">Fechar</button>'+msgHtml()+'</div>';
+  const to=C.P[ch.to]; const what=ch.prop&&CAT[ch.prop]?'Aluguel em '+CAT[ch.prop].name:(ch.note||'Cobrança');
+  if(ch.status!=='open') return h+'<div>Essa cobrança de <b>'+esc(to?to.name:'alguém')+'</b> já foi '+(ch.status==='paid'?'paga':'cancelada')+'.</div><button class="btn ghost" data-act="payClose">Fechar</button>'+msgHtml()+'</div>';
+  const amount=ch.prop?Math.round(ch.amount*(m.cls==='nomade'?0.75:1)):ch.amount;
+  h+='<div><div class="muted small">'+esc(to?to.name:'Alguém')+' está cobrando</div><div class="big">'+fmt(amount)+'</div></div><div class="small">'+esc(what)+'</div>'+
+     (ch.prop&&m.cls==='nomade'?'<div class="muted small">Já com o desconto de Nômade (valor cobrado: '+fmt(ch.amount)+').</div>':'');
+  if(ch.to===S.uid) h+='<div class="muted small">Essa cobrança é sua. Mostre o QR para o outro jogador.</div>';
+  else h+='<div class="row"><button class="btn" data-act="payCharge"'+(C.over?' disabled':'')+'>Pagar '+fmt(amount)+'</button><button class="btn ghost" data-act="payClose">Fechar</button></div>';
+  return h+msgHtml()+'</div>';
+}
+function bankHtml(){
+  const m=me(); const others=Object.keys(C.P).filter(id=>id!==S.uid&&alive(id));
+  const hist=[...m.hist].reverse().slice(0,25);
+  const mine=Object.entries(S.charges).filter(([,c])=>c.to===S.uid&&c.status==='open').sort((a,b)=>(b[1].createdAt||0)-(a[1].createdAt||0)).slice(0,3);
+  let h='<div class="card stack"><div class="row"><h2 style="margin:0">Seu saldo</h2><span class="chip">'+esc(clsName(m.cls))+'</span></div>'+
+    '<div class="big">'+fmt(m.money)+'</div>'+
+    '<div><div class="row small"><span class="muted">Vida</span><span class="money">'+Math.max(0,m.hp)+' / '+MAXHP+'</span></div>'+bar(m)+'</div></div>';
+  h+='<div class="card stack"><h2>Ler um código</h2><div class="row"><div style="flex:1"><input type="text" id="codeIn" maxlength="24" autocomplete="off" placeholder="COB-XXXXXX ou JOG-XXXXXX" aria-label="Código"></div><button class="btn small" data-act="readCode">Abrir</button></div>'+
+    '<div class="muted small">Escaneie o QR com a câmera do celular. Se não abrir sozinho, digite o código aqui.</div></div>';
+  h+=payCard();
+  h+='<div class="card stack" style="align-items:center;text-align:center"><h2 style="align-self:flex-start">Seu QR para receber</h2>'+
+    (m.code?'<div class="qr" data-qr="'+esc(qrText(m.code))+'"></div><code>'+esc(m.code)+'</code>':'<div class="muted">Gerando seu código...</div>')+
+    '<div class="muted small">Esse QR é sempre o mesmo. Quem escanear escolhe o valor e envia para você.'+(S.game.appUrl?'':' O dono do jogo ainda não salvou o link do app, então por enquanto o QR só tem o código.')+'</div></div>';
+  h+='<div class="card stack"><h2>Cobrar</h2>'+
+    '<div class="row"><div style="flex:1"><label for="cgAmt">Valor</label><input type="number" id="cgAmt" inputmode="numeric" min="1" placeholder="0"></div><div style="flex:2"><label for="cgNote">Motivo (opcional)</label><input type="text" id="cgNote" maxlength="40" placeholder="Pedágio, dívida..."></div></div>'+
+    '<button class="btn" data-act="chargeGeneral"'+(C.over?' disabled':'')+'>Gerar cobrança</button>'+
+    '<div class="muted small">Para cobrar aluguel de um país seu, use o botão Cobrar na aba Terras.</div>'+
+    (mine.length?'<div class="stack">'+mine.map(([code,c])=>'<div class="event" style="flex-direction:column;align-items:center;text-align:center"><b>'+fmt(c.amount)+'</b><span class="small muted">'+esc(c.prop&&CAT[c.prop]?'Aluguel em '+CAT[c.prop].name:(c.note||'Cobrança'))+'</span><div class="qr" data-qr="'+esc(qrText(code))+'"></div><code>'+esc(code)+'</code><button class="btn small ghost" data-act="cancelCharge" data-code="'+esc(code)+'">Cancelar cobrança</button></div>').join('')+'</div>':'<div class="muted small">Nenhuma cobrança aberta.</div>')+
+    '</div>';
+  h+='<div class="card stack"><h2>Enviar dinheiro</h2>'+
+      (others.length?
+      '<div><label for="sendTo">Para</label><select id="sendTo">'+playerOptions(others)+'</select></div>'+
+      '<div class="row"><div style="flex:1"><label for="sendAmt">Valor</label><input type="number" id="sendAmt" inputmode="numeric" min="1" placeholder="0"></div>'+
+      '<div style="flex:2"><label for="sendNote">Motivo (opcional)</label><input type="text" id="sendNote" maxlength="40" placeholder="Aluguel, suborno..."></div></div>'+
+      '<button class="btn" data-act="send"'+(C.over?' disabled':'')+'>Enviar</button>'
+      :'<div class="muted">Ainda não há outros jogadores. Chame alguém para entrar.</div>')+
+      (S.payCode?'':msgHtml())+'</div>'+
+    '<div class="card"><h2>Extrato</h2><div class="list">'+(hist.length?hist.map(x=>
+      '<div class="item"><span>'+esc(x.text)+'</span><span class="money">'+
+      (x.dm?'<span class="'+(x.dm>0?'pos':'neg')+'">'+(x.dm>0?'+':'−')+fmt(Math.abs(x.dm))+'</span> ':'')+
+      (x.dh?'<span class="'+(x.dh>0?'pos':'neg')+'">'+(x.dh>0?'+':'−')+Math.abs(x.dh)+' vida</span>':'')+'</span></div>').join('')
+      :'<div class="muted">Nada por aqui ainda. Compre um país, abra um baú ou receba dinheiro.</div>')+'</div></div>';
+  return h;
+}
+function propPanel(id){
+  const c=cat(id), pr=C.props[id], m=me(); const owner=pr.owner&&C.P[pr.owner]; const mine=pr.owner===S.uid;
+  const dis=(C.over||m.loc!=='mundo')?' disabled':'';
+  let h='<div class="card stack"><div class="row"><div class="title">'+esc(c.name)+'</div><span class="chip">'+esc(GROUPS[c.g])+'</span></div>'+
+    '<div class="row small"><span class="muted">Dono</span><b>'+(owner?esc(owner.name)+(mine?' (você)':''):'Livre')+'</b></div>';
+  if(c.kind==='country'){
+    h+='<div class="row small"><span class="muted">Construção</span><b>'+LEVEL[pr.level]+(pr.mort?' · hipotecado':'')+'</b></div>'+
+    '<div class="rents">'+['Sem casa','1 casa','2 casas','Hotel'].map((t,i)=>'<div'+(pr.owner&&pr.level===i?' class="on"':'')+'>'+t+'<b>'+fmt(c.rent[i])+'</b></div>').join('')+'</div>'+
+    '<div class="muted small">Casa '+fmt(c.casa)+' · Hotel '+fmt(c.hotel)+' · Dono de todo o grupo ('+esc(GROUPS[c.g])+') sem construção cobra aluguel em dobro.</div>';
+  }else{
+    h+='<div class="row small"><span class="muted">Aluguel</span><b>pontos nos dados × $50</b></div>'+(pr.mort?'<div class="small">Hipotecada.</div>':'');
+  }
+  if(!pr.owner){
+    h+='<button class="btn" data-act="buy" data-id="'+id+'"'+dis+'>Comprar por '+fmt(buyCost(id))+'</button>'+(m.cls==='comerciante'?'<div class="muted small">Preço cheio: '+fmt(c.price)+' (desconto de Comerciante).</div>':'<div class="muted small">Preço no tabuleiro: '+fmt(c.price)+'.</div>');
+  }else if(mine){
+    if(!pr.mort){
+      let sg=''; if(c.kind==='country'){ sg=c.rent[pr.level]; if(pr.level===0&&ownsGroup(S.uid,c.g)) sg*=2; }
+      h+='<div><label for="chgAmt_'+id+'">Cobrar aluguel de quem parou aqui</label><input type="number" id="chgAmt_'+id+'" inputmode="numeric" min="1" value="'+sg+'" placeholder="'+(c.kind==='company'?'Pontos dos dados × 50':'Valor')+'"></div>'+
+         '<button class="btn" data-act="charge" data-id="'+id+'"'+dis+'>Cobrar</button>';
+    }
+    if(c.kind==='country'){
+      h+='<div class="row">'+
+        '<button class="btn" data-act="build" data-id="'+id+'"'+((pr.level>=3||pr.mort||C.over)?' disabled':'')+'>'+(pr.level>=2?'Construir hotel ':'Construir casa ')+fmt(buildCost(id))+'</button>'+
+        '<button class="btn ghost" data-act="sell" data-id="'+id+'"'+((pr.level<1||C.over)?' disabled':'')+'>Vender ('+(pr.level>=1?'+'+fmt(sellValue(id)):'−')+')</button></div>';
+    }
+    h+=pr.mort?'<button class="btn ghost" data-act="unmortgage" data-id="'+id+'"'+dis+'>Pagar hipoteca '+fmt(Math.round(c.mort*1.1))+'</button>'
+              :'<button class="btn ghost" data-act="mortgage" data-id="'+id+'"'+((pr.level!==0||C.over)?' disabled':'')+'>Hipotecar (+'+fmt(c.mort)+')</button>'+(pr.level!==0?'<div class="muted small">Venda as construções antes de hipotecar.</div>':'');
+  }else if(!pr.mort){
+    if(c.kind==='company'){
+      h+='<div><label for="dicePts">Pontos que você tirou nos dados</label><input type="number" id="dicePts" inputmode="numeric" min="1" max="12" placeholder="Ex: 7"></div>'+
+         '<button class="btn" data-act="rent" data-id="'+id+'"'+dis+'>Pagar aluguel a '+esc(owner.name)+'</button>';
+    }else{
+      h+='<button class="btn" data-act="rent" data-id="'+id+'"'+dis+'>Pagar aluguel de '+fmt(rentFor(id,S.uid))+' a '+esc(owner.name)+'</button>'+(m.cls==='nomade'?'<div class="muted small">Já com o desconto de Nômade.</div>':'');
+    }
+  }else{
+    h+='<div class="muted small">Hipotecada: não cobra aluguel.</div>';
+  }
+  if(m.loc!=='mundo') h+='<div class="msg">Você está em '+esc(locName(m))+'. Países só podem ser comprados e usados no Mundo (viaje pelo aeroporto).</div>';
+  return h+msgHtml()+'</div>';
+}
+function landHtml(){
+  const id=CAT[S.sel]?S.sel:IDS[0];
+  const opts=Object.keys(GROUPS).map(g=>{
+    const items=IDS.filter(x=>CAT[x].g===g); if(!items.length) return '';
+    return '<optgroup label="'+esc(GROUPS[g])+'">'+items.map(x=>{const o=C.props[x].owner;return '<option value="'+x+'"'+(x===id?' selected':'')+'>'+esc(CAT[x].name)+(o&&C.P[o]?' — '+esc(C.P[o].name):'')+'</option>';}).join('')+'</optgroup>';
+  }).join('');
+  const mine=IDS.filter(x=>C.props[x].owner===S.uid);
+  const gm=me();
+  return '<div class="card stack"><h2>Onde você parou</h2><div><label for="propSel">País ou companhia</label><select id="propSel">'+opts+'</select></div>'+
+    '<div class="muted small">Dica: escaneie o QR do cartão do país com a câmera e ele abre aqui.</div>'+
+    '<button class="btn ghost" data-act="here"'+(C.over?' disabled':'')+'>Estou aqui (parei neste país)</button>'+
+    '<div class="muted small">Seu país atual: '+(gm.at&&CAT[gm.at]?esc(CAT[gm.at].name):'nenhum')+'. A cada 3 rodadas você paga aluguel ao dono do país onde está.</div></div>'+
+    propPanel(id)+
+    '<div class="card"><h2>Suas terras</h2>'+(mine.length?'<div class="list">'+mine.map(x=>{const pr=C.props[x];return '<div class="item" style="align-items:center"><span>'+esc(CAT[x].name)+' <span class="muted small">'+(CAT[x].kind==='country'?LEVEL[pr.level]:'companhia')+(pr.mort?' · hipotecado':'')+'</span></span><button class="btn small ghost" data-act="pick" data-id="'+x+'">Ver</button></div>';}).join('')+'</div>':'<div class="muted">Você ainda não tem nenhuma terra.</div>')+'</div>'+
+    '<div class="card stack">'+(S.unlocked?'<h2>Banco do jogo (só dono)</h2><div class="row"><div style="flex:1"><label for="bankKind">Ação</label><select id="bankKind"><option value="pay">Pagar ao banco</option><option value="get">Receber do banco</option></select></div>'+
+    '<div style="flex:1"><label for="bankAmt">Valor</label><input type="number" id="bankAmt" inputmode="numeric" min="1" placeholder="0"></div></div>'+
+    '<div><label for="bankNote">Motivo (opcional)</label><input type="text" id="bankNote" maxlength="40" placeholder="Passou na partida, multa..."></div>'+
+    '<button class="btn ghost" data-act="bank"'+(C.over?' disabled':'')+'>Confirmar</button>':'')+
+    '<hr style="border:0;border-top:1px solid var(--line);width:100%">'+
+    (S.confirmBk?'<div class="msg err">Falir tira você do jogo e devolve suas terras ao banco. Tem certeza?</div><div class="row"><button class="btn danger" data-act="bankrupt">Sim, falir</button><button class="btn ghost" data-act="bankruptNo">Cancelar</button></div>'
+                :'<button class="btn ghost small" data-act="bankruptAsk"'+(C.over||gm.money>0&&false?' disabled':'')+'>Declarar falência</button>')+'</div>';
+}
+function adminHtml(){
+  if(!S.unlocked){
+    return '<div class="card stack"><h2>Área do dono do jogo</h2><div><label for="adminPass">Senha</label><input type="password" id="adminPass" autocomplete="off" placeholder="A senha está no arquivo .txt"></div><button class="btn ghost" data-act="unlock">Abrir área do dono</button></div>';
+  }
+  const unopened=Object.entries(S.chests).filter(([,c])=>typeof c.value==='number'&&!c.claimedBy);
+  const cp=Math.ceil(unopened.length/12), pp=Math.ceil(IDS.length/12);
+  const ed=cat(S.edSel)||cat(IDS[0]);
+  return '<div class="card stack"><div class="row"><h2 style="margin:0">Área do dono do jogo</h2><button class="btn small ghost" data-act="lock">Trancar</button></div>'+
+    '<div><label for="appUrl">Link deste app (para os QR abrirem direto)</label><input type="url" id="appUrl" placeholder="https://seu-app.exemplo.com (opcional)" value="'+esc(S.game.appUrl||'')+'"></div>'+
+    '<button class="btn ghost small" data-act="saveUrl">Salvar link</button>'+
+    '<h2 style="margin-top:6px">Baús do tesouro</h2>'+
+    '<div class="row"><div style="flex:1"><label for="genN">Quantos baús</label><input type="number" id="genN" inputmode="numeric" min="1" max="24" value="6"></div>'+
+    '<div style="flex:1"><label for="genV">Valor de cada</label><input type="number" id="genV" inputmode="numeric" min="1" value="100"></div></div>'+
+    '<button class="btn" data-act="genChests">Criar baús</button>'+
+    '<div class="small">Baús fechados: <b>'+unopened.length+'</b></div>'+
+    (cp?Array.from({length:cp},(_,i)=>'<button class="btn ghost small" data-act="sheetChests" data-page="'+i+'">Baixar QR dos baús, folha '+(i+1)+'</button>').join(''):'')+
+    '<h2 style="margin-top:6px">Cartões para imprimir</h2>'+
+    Array.from({length:pp},(_,i)=>'<button class="btn ghost small" data-act="sheetLand" data-page="'+i+'">Baixar QR dos países, folha '+(i+1)+'</button>').join('')+
+    '<button class="btn ghost small" data-act="sheetEvents">Baixar cartas de evento</button>'+
+    '<button class="btn ghost small" data-act="sheetPlaces">Baixar QR dos lugares da cidade</button>'+
+    '<button class="btn ghost small" data-act="sheetBoards">Baixar QR dos 3 tabuleiros</button>'+
+    '<button class="btn ghost small" data-act="sheetIsland">Baixar QR dos lugares da ilha</button>'+
+    '<div class="muted small">Cada folha é uma imagem para imprimir. O valor do baú não aparece na carta.</div>'+
+    (downloads?'':'<div class="muted small">Neste aparelho o download de imagens não está disponível. Tente abrir o app no navegador do celular.</div>')+
+    '<h2 style="margin-top:6px">Corrigir valores de um país</h2>'+
+    '<div><label for="edSel">País ou companhia</label><select id="edSel">'+IDS.map(x=>'<option value="'+x+'"'+(x===S.edSel?' selected':'')+'>'+esc(CAT[x].name)+'</option>').join('')+'</select></div>'+
+    '<div class="row"><div><label for="edPrice">Preço</label><input type="number" id="edPrice" inputmode="numeric" value="'+ed.price+'"></div><div><label for="edMort">Hipoteca</label><input type="number" id="edMort" inputmode="numeric" value="'+ed.mort+'"></div></div>'+
+    '<div class="row"><div><label for="edCasa">Casa</label><input type="number" id="edCasa" inputmode="numeric" value="'+(ed.casa||0)+'"></div><div><label for="edHotel">Hotel</label><input type="number" id="edHotel" inputmode="numeric" value="'+(ed.hotel||0)+'"></div></div>'+
+    '<div class="row"><div><label for="edR0">Aluguel</label><input type="number" id="edR0" inputmode="numeric" value="'+(ed.rent?ed.rent[0]:0)+'"></div><div><label for="edR1">1 casa</label><input type="number" id="edR1" inputmode="numeric" value="'+(ed.rent?ed.rent[1]:0)+'"></div></div>'+
+    '<div class="row"><div><label for="edR2">2 casas</label><input type="number" id="edR2" inputmode="numeric" value="'+(ed.rent?ed.rent[2]:0)+'"></div><div><label for="edR3">Hotel</label><input type="number" id="edR3" inputmode="numeric" value="'+(ed.rent?ed.rent[3]:0)+'"></div></div>'+
+    '<button class="btn ghost small" data-act="saveCat">Salvar valores</button></div>';
+}
+function chestHtml(){
+  let h='';
+  if(S.pending&&S.pending.startsWith('BAU-')){
+    h+='<div class="card stack"><h2>Código lido</h2><div>Baú <code>'+esc(S.pending)+'</code></div><button class="btn" data-act="openPending"'+(C.over?' disabled':'')+'>Abrir baú</button></div>';
+  }
+  h+='<div class="card stack"><h2>Abrir baú do tesouro</h2><div><label for="chestCode">Código do baú</label><input type="text" id="chestCode" maxlength="16" autocomplete="off" placeholder="BAU-XXXXXX"></div>'+
+     '<button class="btn" data-act="openCode"'+(C.over?' disabled':'')+'>Abrir</button>'+
+     '<div class="muted small">Escaneie o QR do baú com a câmera do celular. Se abrir direto aqui, é só tocar em abrir. Ou digite o código escrito na carta.</div>'+msgHtml()+'</div>';
+  return h+adminHtml();
+}
+function powerHtml(){
+  const aliveIds=Object.keys(C.P).filter(alive);
+  const pid=presId(); const pres=pid&&C.P[pid]; const iAmPres=pid===S.uid;
+  const tally={}; for(const [uid,v] of Object.entries(S.votes)){ if(alive(v.for)&&C.P[uid]) tally[v.for]=(tally[v.for]||0)+(C.P[uid].cls==='politico'?2:1); }
+  const myVote=S.votes[S.uid]&&S.votes[S.uid].for;
+  let h='<div class="card stack"><h2>Presidência</h2>'+
+    '<div><div class="muted small">Presidente atual</div><div class="title">'+(pres?esc(pres.name):'Ninguém ainda')+'</div></div>'+
+    '<div><label for="voteFor">Seu voto</label><select id="voteFor">'+playerOptions(aliveIds,myVote)+'</select></div>'+
+    '<div class="row"><button class="btn" data-act="vote"'+(C.over?' disabled':'')+'>Votar</button><button class="btn ghost" data-act="tally"'+(C.over?' disabled':'')+'>Apurar eleição</button></div>'+
+    (Object.keys(tally).length?'<div class="list">'+Object.entries(tally).sort((a,b)=>b[1]-a[1]).map(([id,n])=>'<div class="item"><span>'+esc(C.P[id].name)+'</span><span class="money">'+n+' voto'+(n>1?'s':'')+'</span></div>').join('')+'</div>':'<div class="muted small">Nenhum voto ainda.</div>')+
+    msgHtml()+'</div>';
+  const pe=S.pending&&S.pending.startsWith('EVT-')?S.pending.slice(4):null;
+  if(pe&&EVENTS[pe]){
+    h+='<div class="card stack"><h2>Carta lida</h2><div class="event"><div><b>'+esc(EVENTS[pe].name)+'</b><span class="small muted">'+esc(EVENTS[pe].text)+'</span></div></div>'+
+       (iAmPres?'<button class="btn" data-act="event" data-id="'+pe+'"'+(C.over?' disabled':'')+'>Ativar para todos</button>':'<div class="muted small">Só o presidente pode ativar eventos.</div>')+'</div>';
+  }
+  if(iAmPres){
+    h+='<div class="card stack"><h2>Gabinete</h2>'+
+      '<div><label for="rateIn">Imposto (0 a 100%) cobrado de todos a cada 5 rodadas</label><input type="number" id="rateIn" inputmode="numeric" min="0" max="100" value="'+C.taxRate+'"></div><button class="btn" data-act="setRate"'+(C.over?' disabled':'')+'>Definir imposto</button>'+
+      '<h2 style="margin-top:6px">Banco</h2><div><label for="bankRate">Juros dos empréstimos (0 a 100%)</label><input type="number" id="bankRate" inputmode="numeric" min="0" max="100" value="'+C.loanRate+'"></div><button class="btn ghost" data-act="setBank"'+(C.over?' disabled':'')+'>Definir juros do banco</button>'+
+      '<h2 style="margin-top:6px">Titular um jogador</h2><div><label for="tiWho">Jogador</label><select id="tiWho">'+playerOptions(aliveIds.filter(x=>x!==S.uid))+'</select></div>'+
+      '<div><label for="tiName">Nome do título</label><input type="text" id="tiName" maxlength="30" placeholder="Ex: Meu braço direito"></div>'+
+      '<div class="row"><div style="flex:2"><label for="tiBuff">Buff</label><select id="tiBuff">'+Object.entries(BUFFS).map(([k,n])=>'<option value="'+k+'">'+n+'</option>').join('')+'</select></div><div style="flex:1"><label for="tiPct">%</label><input type="number" id="tiPct" inputmode="numeric" min="0" max="100" value="25"></div></div>'+
+      '<div class="row"><button class="btn" data-act="giveTitle"'+(C.over?' disabled':'')+'>Dar título</button><button class="btn ghost" data-act="removeTitle"'+(C.over?' disabled':'')+'>Tirar título</button></div>'+
+      '<div class="list">'+Object.values(C.P).filter(p=>p.title).map(p=>'<div class="item"><span>'+esc(p.name)+': <b>'+esc(p.title.name)+'</b></span><span class="muted small">'+BUFFS[p.title.buff]+' '+p.title.pct+'%</span></div>').join('')+'</div>'+
+      '<button class="btn ghost" data-act="randomEvent"'+(C.over?' disabled':'')+'>Sortear um evento</button>'+
+      '<div class="stack">'+Object.entries(EVENTS).map(([id,e])=>'<div class="event"><div><b>'+esc(e.name)+'</b><span class="small muted">'+esc(e.text)+'</span></div><button class="btn small ghost" data-act="event" data-id="'+id+'"'+(C.over?' disabled':'')+'>Ativar</button></div>').join('')+'</div></div>';
+  }else{
+    h+='<div class="card muted small">Só o presidente tem acesso ao gabinete: taxa de imposto e eventos para todos. Vença a eleição para ganhar o poder.</div>';
+  }
+  return h;
+}
+function worldHtml(){
+  const ps=Object.values(C.P).sort((a,b)=>b.money-a.money);
+  return '<div class="card small">Rodada <b>'+(C.round+1)+'</b> · Imposto <b>'+C.taxRate+'%</b></div>'+'<div class="card"><h2>Jogadores</h2><div class="list">'+ps.map(p=>{
+    const n=IDS.filter(x=>C.props[x].owner===p.id).length;
+    return '<div class="item" style="align-items:center"><div style="flex:1;min-width:0"><div>'+(p.id===presId()?'<span class="chip" style="margin-right:6px"><b>Presidente</b></span>':'')+'<b>'+esc(p.name)+'</b> <span class="muted small">'+esc(clsName(p.cls))+' · '+n+' terra'+(n===1?'':'s')+'</span></div>'+bar(p)+'</div>'+
+    '<div style="text-align:right"><div class="money">'+fmt(p.money)+'</div><div class="small muted">'+(p.dead?'morreu':p.bankrupt?'faliu':Math.max(0,p.hp)+' vida')+'</div></div></div>';}).join('')+'</div></div>'+
+    '<div class="card"><h2>Acontecimentos</h2><div class="list">'+(C.feed.length?C.feed.slice(0,15).map(f=>'<div class="item"><span>'+esc(f.text)+'</span></div>').join(''):'<div class="muted">Ainda não aconteceu nada.</div>')+'</div></div>';
+}
+function bannerHtml(){
+  if(!C.over) return '';
+  if(C.reason==='death') return '<div class="banner"><b>Fim de jogo</b>'+esc(C.dead.map(p=>p.name).join(', '))+' morreu.'+(C.winner?' Vencedor: '+esc(C.winner.name)+' com '+fmt(C.winner.money)+'.':'')+'</div>';
+  return '<div class="banner"><b>Fim de jogo</b>'+(C.winner?'Só sobrou '+esc(C.winner.name)+' com dinheiro. Vencedor: '+esc(C.winner.name)+' com '+fmt(C.winner.money)+'.':'Todo mundo faliu.')+'</div>';
+}
+function html(){
+  if(S.fatal) return '<div class="card">'+esc(S.fatal)+'</div>';
+  if(!ready()) return '<div class="card muted">Carregando o mundo...'+(S.timedOut?'<br>Está demorando. Confira a conexão e aguarde, sem recarregar.':'')+'</div>';
+  if(!S.canWrite) return '<div class="card">Você está só olhando. Não foi possível gravar no banco do jogo.</div>';
+  if(!me()) return joinHtml();
+  if(out()&&!C.over) return '<div class="card"><b>'+(me().dead?'Você morreu.':'Você faliu.')+'</b> Agora é só assistir.</div>'+resetHtml()+worldHtml();
+  const body=({me:meHtml,bank:bankHtml,city:cityHtml,land:landHtml,ilha:ilhaHtml,more:moreHtml}[S.tab]||meHtml)();
+  return bannerHtml()+body;
+}
+function render(){
+  const root=$('#app'); const keep={};
+  root.querySelectorAll('input,select').forEach(el=>{ if(!el.id||el.id==='propSel'||el.id==='edSel'||el.id==='placeSel'||el.id==='ipSel') return; keep[el.id]={v:el.value,c:el.checked}; if(el.name==='cls'&&el.checked) keep.cls_sel=el.id; });
+  const aid=document.activeElement&&document.activeElement.id;
+  root.innerHTML=html();
+  root.querySelectorAll('input,select').forEach(el=>{
+    const k=keep[el.id]; if(!k) return;
+    if(el.type==='radio') el.checked=(keep.cls_sel===el.id);
+    else if(el.tagName==='SELECT'){ if([...el.options].some(o=>o.value===k.v)) el.value=k.v; }
+    else el.value=k.v;
+  });
+  if(aid){ const el=document.getElementById(aid); if(el&&el.focus) try{el.focus();}catch(e){} }
+  if(S.forceSend){ const el=document.getElementById('sendTo'); if(el&&S.sendTarget&&[...el.options].some(o=>o.value===S.sendTarget)){ el.value=S.sendTarget; } S.forceSend=false; }
+  drawQRs();
+  document.querySelectorAll('#tabs button').forEach(b=>b.setAttribute('aria-current',String(b.dataset.tab===S.tab)));
+  const chip=$('#presChip'), pid=presId();
+  if(ready()&&pid&&C.P[pid]){ chip.hidden=false; chip.innerHTML='Presidente: <b>'+esc(C.P[pid].name)+'</b>'; } else chip.hidden=true;
+}
+function pickLife(){
+  if(S.fresh){ if(S.players[S.uid]) S.fresh=false; return; }
+  let best=null;
+  for(const [id,p] of Object.entries(S.players)){
+    if(id!==S.base&&!id.startsWith(S.base+'~')) continue;
+    if(!best||(p.joinedAt||0)>(S.players[best].joinedAt||0)) best=id;
+  }
+  S.uid=best||S.base;
+}
+function ensureCode(){
+  const p=S.players[S.uid];
+  if(p&&!p.code&&!S.codeBusy&&db){ S.codeBusy=true; db.collection('players').doc(S.uid).update({code:rcode('JOG-',6)}).catch(()=>{}).then(()=>{S.codeBusy=false;}); }
+}
+function drawQRs(){
+  if(typeof QRCode==='undefined') return;
+  document.querySelectorAll('[data-qr]').forEach(el=>{ el.innerHTML=''; try{ new QRCode(el,{text:el.dataset.qr,width:190,height:190,correctLevel:QRCode.CorrectLevel.M}); }catch(e){} });
+}
+function update(){
+  compute();
+  if(ready()&&S.hashCode){ const h=S.hashCode; S.hashCode=null; handleCode(h); }
+  ensureCode(); islandTick(); render();
+}
+function say(kind,text){ S.msg={kind,text}; render(); }
+
+/* ---------- ações ---------- */
+async function guard(fn){
+  if(S.busy) return; S.busy=true;
+  try{ await fn(); }catch(e){ say('err','Não deu certo: '+(e&&e.message?e.message:'erro desconhecido')); }
+  finally{ S.busy=false; }
+}
+function clearHash(){ try{ if(location.hash) location.hash=''; }catch(e){} }
+function handleCode(raw){
+  const h=String(raw||'').trim().toUpperCase(); S.msg=null;
+  if(/^(BAU|EVT)-[A-Z0-9]+$/.test(h)){ S.pending=h; S.tab='more'; S.sub=h.startsWith('BAU-')?'chest':'power'; return true; }
+  if(/^LOC-(CIDADE|MUNDO|ILHA)$/.test(h)){ S.locCode=h.slice(4).toLowerCase(); S.tab='me'; return true; }
+  if(/^ISLA-[A-Z0-9]+$/.test(h)&&ILHA[h.slice(5)]){ S.ipSel=h.slice(5); S.tab='ilha'; return true; }
+  if(/^LUG-[A-Z0-9]+$/.test(h)&&PLACES[h.slice(4)]){ S.place=h.slice(4); S.tab='city'; return true; }
+  if(/^PAIS-[A-Z0-9]+$/.test(h)&&CAT[h.slice(5)]){ S.sel=h.slice(5); S.tab='land'; return true; }
+  if(/^COB-[A-Z0-9]+$/.test(h)){ S.payCode=h; S.tab='bank'; return true; }
+  if(/^JOG-[A-Z0-9]+$/.test(h)){ const id=Object.keys(S.players).find(k=>S.players[k].code===h); if(id&&id!==S.uid){ S.sendTarget=id; S.forceSend=true; S.tab='bank'; return true; } }
+  return false;
+}
+function parseHash(){ try{ const h=(location.hash||'').replace('#',''); if(h) S.hashCode=h; }catch(e){} }
+async function sha(s){ const b=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(s)); return Array.from(new Uint8Array(b)).map(x=>x.toString(16).padStart(2,'0')).join(''); }
+async function openChest(raw){
+  const code=String(raw||'').trim().toUpperCase();
+  if(!/^BAU-[A-Z0-9]{4,12}$/.test(code)) return say('err','Código inválido. Ele começa com BAU-.');
+  if(C.over) return say('err','O jogo já acabou.');
+  const known=S.chests[code];
+  if(known&&known.claimedBy){ const w=C.P[known.claimedBy]?C.P[known.claimedBy].name:'outro jogador'; S.pending=null; clearHash(); return say('err','Esse baú já foi aberto por '+w+'.'); }
+  const ref=db.doc('chests/'+code);
+  const lease=await ref.acquire({holder:S.uid,ttlMs:8000});
+  if(!lease.acquired) return say('err','Alguém está abrindo esse baú agora. Tente de novo em instantes.');
+  const snap=await ref.get(); const d=snap.exists?snap.data():null;
+  if(!d||typeof d.value!=='number'){ try{await ref.delete();}catch(e){} return say('err','Esse baú não existe.'); }
+  if(d.claimedBy){ const who=C.P[d.claimedBy]?C.P[d.claimedBy].name:'outro jogador'; S.pending=null; clearHash(); return say('err','Esse baú já foi aberto por '+who+'.'); }
+  await ref.set({...d,claimedBy:S.uid,claimedAt:Date.now()});
+  await db.collection('log').add({type:'chest',to:S.uid,amount:d.value,code,ts:Date.now()});
+  const got=Math.round(d.value*(me()&&me().cls==='pirata'?1.2:1));
+  S.pending=null; clearHash(); const i=$('#chestCode'); if(i) i.value='';
+  say('ok','Tesouro! Você achou '+fmt(got)+'.');
+}
+async function saveGame(patch){ await db.doc('game/state').set({...S.game,...patch}); }
+let _lt=0;
+const L=(o)=>{ _lt=Math.max(Date.now(),_lt+1); return db.collection('log').add({...o,ts:_lt}); };
+const ACT={
+  join:()=>guard(async()=>{
+    const name=($('#nick')||{}).value.trim(); const r=document.querySelector('input[name=cls]:checked');
+    if(!name) return say('err','Escolha um nome.'); if(!r) return say('err','Escolha uma classe.');
+    await db.collection('players').doc(S.uid).set({name:name.slice(0,20),cls:r.value,joinedAt:Date.now(),code:rcode('JOG-',6)});
+    S.msg=null;
+  }),
+  send:()=>guard(async()=>{
+    const to=$('#sendTo').value, amt=Math.floor(Number($('#sendAmt').value)), note=$('#sendNote').value.trim().slice(0,40);
+    if(C.over) return say('err','O jogo já acabou.');
+    if(!to||!alive(to)) return say('err','Escolha para quem enviar.');
+    if(!(amt>0)) return say('err','Digite um valor maior que zero.');
+    if(amt>me().money) return say('err','Saldo insuficiente. Você tem '+fmt(me().money)+'.');
+    await L({type:'send',from:S.uid,to,amount:amt,note});
+    $('#sendAmt').value=''; $('#sendNote').value='';
+    say('ok','Enviado '+fmt(amt)+' para '+C.P[to].name+'.');
+  }),
+  readCode:()=>{ const v=($('#codeIn')||{}).value; if(handleCode(v)){ const i=$('#codeIn'); if(i) i.value=''; render(); } else say('err','Não reconheci esse código.'); },
+  payClose:()=>{ S.payCode=null; S.msg=null; render(); },
+  payCharge:()=>guard(async()=>{
+    const code=S.payCode, ch=S.charges[code];
+    if(!ch||ch.status!=='open') return say('err','Essa cobrança não está mais aberta.');
+    if(ch.to===S.uid) return say('err','Você não pode pagar a sua própria cobrança.');
+    if(C.over) return say('err','O jogo já acabou.');
+    const to=C.P[ch.to]; if(!to||!alive(ch.to)) return say('err','Quem cobrou não está mais no jogo.');
+    const pr=ch.prop?C.props[ch.prop]:null;
+    if(ch.prop&&(!pr||pr.owner!==ch.to||pr.mort)) return say('err','Esse lugar não cobra mais aluguel.');
+    const amount=ch.prop?Math.round(ch.amount*(me().cls==='nomade'?0.75:1)):ch.amount;
+    if(!ch.prop&&amount>me().money) return say('err','Saldo insuficiente. Você tem '+fmt(me().money)+'.');
+    const ref=db.doc('charges/'+code); const lease=await ref.acquire({holder:S.uid,ttlMs:8000});
+    if(!lease.acquired) return say('err','Essa cobrança está sendo paga agora. Tente de novo.');
+    const snap=await ref.get(); const d=snap.exists?snap.data():null;
+    if(!d||d.status!=='open') return say('err','Essa cobrança já foi paga.');
+    await ref.set({...d,status:'paid',paidBy:S.uid,paidAt:Date.now()});
+    if(ch.prop) await L({type:'rent',prop:ch.prop,from:S.uid,to:ch.to,amount});
+    else await L({type:'send',from:S.uid,to:ch.to,amount,note:ch.note||'Cobrança'});
+    S.payCode=null; say('ok','Pago '+fmt(amount)+' a '+to.name+'.');
+  }),
+  charge:(b)=>guard(async()=>{
+    const id=b.dataset.id,pr=C.props[id]; if(!pr||pr.owner!==S.uid||pr.mort) return say('err','Você não pode cobrar aluguel desse lugar.');
+    const amt=Math.floor(Number(($('#chgAmt_'+id)||{}).value)); if(!(amt>0)) return say('err','Digite o valor a cobrar.');
+    const code=rcode('COB-',6);
+    await db.doc('charges/'+code).set({to:S.uid,amount:amt,prop:id,note:'',status:'open',createdAt:Date.now()});
+    S.tab='bank'; say('ok','Cobrança de '+fmt(amt)+' criada. Mostre o QR ou o código para o jogador.'); window.scrollTo(0,0);
+  }),
+  chargeGeneral:()=>guard(async()=>{
+    const amt=Math.floor(Number($('#cgAmt').value)), note=$('#cgNote').value.trim().slice(0,40);
+    if(C.over) return say('err','O jogo já acabou.'); if(!(amt>0)) return say('err','Digite o valor a cobrar.');
+    const code=rcode('COB-',6);
+    await db.doc('charges/'+code).set({to:S.uid,amount:amt,prop:null,note,status:'open',createdAt:Date.now()});
+    $('#cgAmt').value=''; $('#cgNote').value='';
+    say('ok','Cobrança de '+fmt(amt)+' criada. Mostre o QR ou o código.');
+  }),
+  cancelCharge:(b)=>guard(async()=>{
+    const code=b.dataset.code,ch=S.charges[code]; if(!ch||ch.to!==S.uid||ch.status!=='open') return;
+    await db.doc('charges/'+code).update({status:'cancelled'}); say('ok','Cobrança cancelada.');
+  }),
+  setBank:()=>guard(async()=>{
+    if(C.president!==S.uid) return say('err','Só o prefeito controla o banco.');
+    const r=Math.max(0,Math.min(100,Math.floor(Number(($('#bankRate')||{}).value)||0)));
+    await L({type:'setbank',by:S.uid,rate:r}); say('ok','Juros do banco: '+r+'%.');
+  }),
+  giveTitle:()=>guard(async()=>{
+    if(C.president!==S.uid) return say('err','Só o prefeito dá títulos.');
+    const who=$('#tiWho').value, name=$('#tiName').value.trim().slice(0,30), buff=$('#tiBuff').value, pct=Math.max(0,Math.min(100,Math.floor(Number($('#tiPct').value)||0)));
+    if(!who||!name) return say('err','Escolha o jogador e o nome do título.');
+    await L({type:'title',by:S.uid,who,name,buff,pct}); say('ok',C.P[who].name+' agora é '+name+'.');
+  }),
+  removeTitle:()=>guard(async()=>{
+    if(C.president!==S.uid) return; const who=$('#tiWho').value; if(!who) return;
+    await L({type:'title',by:S.uid,who,buff:''}); say('ok','Título removido.');
+  }),
+  arrive:()=>guard(async()=>{
+    const m=me(), X=S.locCode; if(!X) return;
+    if(m.loc===X){ S.locCode=null; return say('ok','Você já está em '+LOCS[X]+'.'); }
+    if(m.loc==='transit'&&m.dest===X){ await L({type:'arrive',by:S.uid,to:X}); S.locCode=null; return say('ok','Você chegou: '+LOCS[X]+'.'); }
+    say('err','Você ainda não viajou para '+LOCS[X]+'. Compre a viagem (avião ou barco) e depois escaneie.');
+  }),
+  locNo:()=>{ S.locCode=null; render(); },
+  scan:()=>{ const i=$('#scanFile'); if(i){ i.value=''; i.click(); } },
+  boat:(b)=>guard(async()=>{
+    const to=b.dataset.id; const m=me(); if(!LOCS[to]||C.over||m.loc==='transit'||m.loc===to) return;
+    if(to!=='ilha'&&m.loc!=='ilha') return say('err','O barco clandestino só vai e volta da ilha.');
+    if(FEE_BOAT>m.money) return say('err','Saldo insuficiente.');
+    await L({type:'travel',by:S.uid,to,cost:FEE_BOAT,via:'barco'}); say('ok','Você embarcou escondido. Ao chegar, escaneie o QR de '+LOCS[to]+'. Você agora é procurado.');
+  }),
+  iat:()=>guard(async()=>{
+    const id=($('#ipSel')||{}).value||S.ipSel; if(!ILHA[id]||me().loc!=='ilha') return; S.ipSel=id;
+    await L({type:'iat',by:S.uid,place:id}); say('ok','Você está em '+ILHA[id]+'.');
+  }),
+  canoe:()=>guard(async()=>{
+    const id=($('#ipSel')||{}).value||S.ipSel; if(!ILHA[id]||me().loc!=='ilha') return; S.ipSel=id;
+    if(FEE_CANOE>me().money) return say('err','Saldo insuficiente.');
+    await L({type:'iat',by:S.uid,place:id,cost:FEE_CANOE}); say('ok','De canoa até '+ILHA[id]+'.');
+  }),
+  islandStart:()=>guard(async()=>{
+    const ref=db.doc('island/round'); const lease=await ref.acquire({holder:S.uid,ttlMs:8000});
+    if(!lease.acquired) return say('err','Alguém está começando a caça. Aguarde.');
+    const snap=await ref.get(); const d=snap.exists?snap.data():null;
+    if(d&&d.status==='on') return say('err','Já tem uma caça em andamento.');
+    const ps=shuffle(onIsland().map(p=>p.id)); if(ps.length<2) return say('err','Precisa de 2 jogadores na ilha.');
+    const secret={p:pick1(ALLP),t:pick1(ALLT),l:pick1(ALLL)};
+    const rest=shuffle([...ALLP,...ALLT,...ALLL].filter(c=>c!==secret.p&&c!==secret.t&&c!==secret.l));
+    const hands={}; ps.forEach(id=>{hands[id]=[];}); rest.forEach((c,i)=>hands[ps[i%ps.length]].push(c));
+    await ref.set({rid:((d&&d.rid)||0)+1,status:'on',startedAt:Date.now(),players:ps,secret,hands,result:null});
+    say('ok','A caça começou! Veja suas cartas.');
+  }),
+  guess:()=>guard(async()=>{
+    const r=rd(), m=me(); if(!r||!inRound()||m.loc!=='ilha'||!m.ipl||C.over) return;
+    if(openGuess()) return say('err','Já tem um palpite em andamento.');
+    const p=$('#gsP').value, t=$('#gsT').value, l='L_'+m.ipl; const fee=Math.round(FEE_GUESS*(1-bankDisc()));
+    if(fee>m.money) return say('err','Saldo insuficiente.');
+    const ids=r.players; const i0=ids.indexOf(S.uid);
+    const order=ids.map((_,k)=>ids[(i0+1+k)%ids.length]).filter(id=>id!==S.uid&&alive(id));
+    await db.collection('iguess').add({rid:r.rid,by:S.uid,p,t,l,order,idx:0,idxAt:Date.now(),shown:null,done:false,ts:Date.now()});
+    await L({type:'bank',by:S.uid,amount:-fee,note:'Palpite na ilha'});
+    say('ok','Palpite feito. Esperando os outros jogadores.');
+  }),
+  showCard:(b)=>guard(async()=>{
+    const g=openGuess(), c=b.dataset.card; if(!g||g.order[g.idx]!==S.uid) return;
+    if(!myCards().includes(c)||![g.p,g.t,g.l].includes(c)) return;
+    await db.doc('iguess/'+g.id).update({shown:{by:S.uid,card:c},done:true}); say('ok','Carta mostrada.');
+  }),
+  skipResp:()=>guard(async()=>{
+    const g=openGuess(); if(!g||g.by!==S.uid||Date.now()-(g.idxAt||g.ts)<45000) return;
+    const ni=g.idx+1; await db.doc('iguess/'+g.id).update({idx:ni,idxAt:Date.now(),done:ni>=g.order.length});
+  }),
+  accuse:()=>guard(async()=>{
+    const m=me(); if(C.over||!inRound()) return;
+    const p=$('#acP').value,t=$('#acT').value,l=$('#acL').value;
+    const ref=db.doc('island/round'); const lease=await ref.acquire({holder:S.uid,ttlMs:8000});
+    if(!lease.acquired) return say('err','Outra pessoa está se declarando agora. Tente de novo.');
+    const snap=await ref.get(); const d=snap.exists?snap.data():null;
+    if(!d||d.status!=='on'||!d.players.includes(S.uid)) return say('err','Essa caça já acabou.');
+    const sec=d.secret, win=sec.p===p&&sec.t===t&&sec.l===l;
+    const others=d.players.filter(id=>id!==S.uid&&alive(id));
+    if(win){
+      const prize=TESOUROS[sec.t.slice(2)].val;
+      await L({type:'bank',by:S.uid,amount:prize,note:'Tesouro encontrado: '+cardName(sec.t)});
+      for(const id of others){
+        await L({type:'bank',by:id,amount:-40,note:'Perdeu a caça ao tesouro'});
+        await L({type:'hurt',by:id,hp:15,note:'Voltou machucado da ilha'});
+        await L({type:'exile',by:id});
+      }
+      await ref.set({...d,status:'off',result:{winner:S.uid,secret:sec,prize,text:m.name+' descobriu o segredo e levou '+fmt(prize)+'. Os outros voltaram para a cidade.',ts:Date.now()}});
+      return say('ok','Você acertou! Tesouro: '+fmt(prize)+'.');
+    }
+    await L({type:'bank',by:S.uid,amount:-80,note:'Acusação errada na ilha'});
+    await L({type:'hurt',by:S.uid,hp:20,note:'Acusação errada'});
+    await L({type:'exile',by:S.uid});
+    const left=d.players.filter(id=>id!==S.uid);
+    if(left.length<=1) await ref.set({...d,status:'off',players:left,result:{winner:null,secret:sec,text:m.name+' errou a acusação e a caça acabou sem vencedor.',ts:Date.now()}});
+    else await ref.set({...d,players:left});
+    say('err','Errou! Você perdeu $80, 20 de vida e voltou para a cidade.');
+  }),
+  sheetBoards:()=>guard(async()=>{
+    const items=Object.entries(LOCS).map(([k,n])=>({title:('TABULEIRO: '+n).toUpperCase(),line:'Escaneie ao chegar',sub:'Marca onde você está',code:'LOC-'+k.toUpperCase()}));
+    await sheet(items,'tabuleiros.png');
+  }),
+  sheetIsland:()=>guard(async()=>{
+    const items=Object.entries(ILHA).map(([k,n])=>({title:n.toUpperCase(),line:'Ilha dos piratas',sub:'Escaneie ao parar aqui',code:'ISLA-'+k}));
+    await sheet(items,'ilha-lugares.png');
+  }),
+  sub:(b)=>{ S.sub=b.dataset.v; S.msg=null; render(); },
+  goPower:()=>{ S.tab='more'; S.sub='power'; S.msg=null; render(); window.scrollTo(0,0); },
+  roll:()=>guard(async()=>{
+    const m=me(); if(C.over) return say('err','O jogo já acabou.'); if(m.rolled) return say('err','Você já rolou nesta rodada.');
+    const value=1+Math.floor(Math.random()*6), bonus=diceBonus(m);
+    await L({type:'roll',by:S.uid,value,bonus}); say('ok','Você tirou '+value+(bonus?' +'+bonus+' do veículo':'')+'.');
+  }),
+  payBill:(b)=>guard(async()=>{
+    const bl=C.bills[b.dataset.id]; if(!bl||bl.paid||bl.payer!==S.uid) return say('err','Essa conta já foi paga.');
+    await L({type:'paybill',by:S.uid,bill:bl.id}); say('ok','Conta paga.');
+  }),
+  stop:(b)=>guard(async()=>{
+    const id=b.dataset.id, base=Math.floor(Number(b.dataset.base)); if(C.over) return;
+    if(me().loc!=='cidade') return say('err','Você não está na cidade.');
+    await L({type:'stop',by:S.uid,place:id,base}); say('ok','Pago.');
+  }),
+  eat:(b)=>guard(async()=>{
+    const id=b.dataset.id, f=(FOODS[id]||[]).find(x=>x.id===b.dataset.food); if(!f||C.over) return;
+    if(me().loc!=='cidade') return say('err','Você não está na cidade.');
+    const cost=pcost(f.cost,id,true); if(cost>me().money) return say('err','Saldo insuficiente.');
+    await L({type:'food',by:S.uid,place:id,item:f.name,cost,gain:f.gain,to:placeOwner(id)||null}); say('ok','Você comeu: '+f.name+'.');
+  }),
+  heal:()=>guard(async()=>{
+    if(C.over||me().loc!=='cidade') return; const cost=pcost(50,'HOSPITAL'); if(cost>me().money) return say('err','Saldo insuficiente.');
+    await L({type:'heal',by:S.uid,cost,gain:Math.round(30*(has('MEDICINA')?1.5:1))}); say('ok','Consulta feita.');
+  }),
+  study:(b)=>guard(async()=>{
+    const k=b.dataset.id,c=COURSES[k]; const m=me(); if(!c||m.study||m.skills.includes(k)||C.over) return;
+    if(m.loc!=='cidade') return say('err','Você não está na cidade.');
+    const cost=pcost(c.cost,'ESCOLA'); if(cost>m.money) return say('err','Saldo insuficiente.');
+    await L({type:'study',by:S.uid,course:k,cost}); say('ok','Matrícula feita: '+c.name+'.');
+  }),
+  vehicle:(b)=>guard(async()=>{
+    const v=VEHICLES.find(x=>x.id===b.dataset.id); if(!v||C.over||me().loc!=='cidade') return;
+    const cost=pcost(v.cost,'CONCESSIONARIA'); if(cost>me().money) return say('err','Saldo insuficiente.');
+    await L({type:'vehicle',by:S.uid,kind:v.id,item:v.name,cost,to:placeOwner('CONCESSIONARIA')||null});
+    say('ok','Você comprou: '+v.name+'.');
+  }),
+  shop:()=>guard(async()=>{
+    if(C.over||me().loc!=='cidade'||has('ROUPA')) return; const cost=pcost(60,'SHOPPING'); if(cost>me().money) return say('err','Saldo insuficiente.');
+    await L({type:'shop',by:S.uid,cost,to:placeOwner('SHOPPING')||null}); say('ok','Roupa social comprada.');
+  }),
+  fly:(b)=>guard(async()=>{
+    const to=b.dataset.id; if(!LOCS[to]||C.over) return; const cost=pcost(50,'AEROPORTO'); if(cost>me().money) return say('err','Saldo insuficiente.');
+    if(me().loc==='transit') return say('err','Você já está viajando.');
+    await L({type:'travel',by:S.uid,to,cost,via:'aviao'}); say('ok','Você embarcou para '+LOCS[to]+'. Ao chegar, toque em Ler QR e escaneie o QR do tabuleiro.');
+  }),
+  loan:(b)=>guard(async()=>{
+    const amt=Math.floor(Number(b.dataset.amt)); if(!(amt>0)||C.over||me().loc!=='cidade') return;
+    await L({type:'loan',by:S.uid,amount:amt}); say('ok','Empréstimo de '+fmt(amt)+' recebido. Pague em até 4 rodadas.');
+  }),
+  placeBuy:(b)=>guard(async()=>{
+    const id=b.dataset.id,P0=PLACES[id]; if(!P0||!P0.owned||C.over) return;
+    if(!has('ADMINISTRACAO')) return say('err','Você precisa da faculdade de Administração.');
+    if(C.pl[id].owner) return say('err','Essa empresa já tem dono.'); if(P0.price>me().money) return say('err','Saldo insuficiente.');
+    await L({type:'placebuy',by:S.uid,place:id,price:P0.price}); say('ok','Você agora é dono: '+P0.name+'.');
+  }),
+  setSalary:(b)=>guard(async()=>{
+    const id=b.dataset.id; if(C.pl[id].owner!==S.uid) return; const amt=Math.max(0,Math.floor(Number(($('#salIn')||{}).value)||0));
+    await L({type:'setsalary',by:S.uid,place:id,amount:amt}); say('ok','Salário definido em '+fmt(amt)+'.');
+  }),
+  improve:(b)=>guard(async()=>{
+    const id=b.dataset.id,s=C.pl[id]; if(s.owner!==S.uid||s.level>=3||C.over) return;
+    const n=Object.values(C.P).filter(q=>q.id!==S.uid&&alive(q.id)).length; if(30*n>me().money) return say('err','Saldo insuficiente.');
+    await L({type:'improve',by:S.uid,place:id}); say('ok','Benfeitoria feita.');
+  }),
+  payEach:()=>guard(async()=>{
+    const a=Math.floor(Number(($('#eachAmt')||{}).value)); if(!(a>0)||C.over) return say('err','Digite o valor.');
+    const n=Object.values(C.P).filter(q=>q.id!==S.uid&&alive(q.id)).length; if(a*n>me().money) return say('err','Saldo insuficiente.');
+    await L({type:'payeach',by:S.uid,amount:a}); say('ok','Pago a cada jogador.');
+  }),
+  collectEach:()=>guard(async()=>{
+    const a=Math.floor(Number(($('#eachAmt')||{}).value)); if(!(a>0)||C.over) return say('err','Digite o valor.');
+    await L({type:'collecteach',by:S.uid,amount:a}); say('ok','Recebido de cada jogador.');
+  }),
+  job:(b)=>guard(async()=>{
+    const id=b.dataset.id; if(C.over||!PLACES[id]) return; if(me().loc!=='cidade') return say('err','Você não está na cidade.');
+    const chance=jobChance(me()), win=Math.random()*100<chance;
+    await new Promise(res=>rouletteShow(chance,win,PLACES[id].name,res));
+    await L({type:'job',by:S.uid,place:id,success:win});
+    say(win?'ok':'err',win?'Você foi contratado em '+PLACES[id].name+'.':'Não passou na entrevista. Tente de novo.');
+  }),
+  quit:()=>guard(async()=>{ await L({type:'quit',by:S.uid}); say('ok','Você pediu demissão.'); }),
+  here:()=>guard(async()=>{
+    if(me().loc!=='mundo') return say('err','Vá ao aeroporto e viaje para o Mundo.');
+    await L({type:'at',by:S.uid,country:S.sel}); say('ok','Você está em '+CAT[S.sel].name+'. A cada 3 rodadas você paga aluguel ao dono.');
+  }),
+  setRate:()=>guard(async()=>{
+    if(C.president!==S.uid) return say('err','Só o prefeito define o imposto.');
+    const r=Math.max(0,Math.min(100,Math.floor(Number(($('#rateIn')||{}).value)||0)));
+    await L({type:'setrate',by:S.uid,rate:r}); say('ok','Imposto definido em '+r+'%.');
+  }),
+  sheetPlaces:()=>guard(async()=>{
+    const items=PLACE_IDS.map(id=>({title:PLACES[id].name.toUpperCase(),line:'Lugar da cidade',sub:'Escaneie ao chegar aqui',code:'LUG-'+id}));
+    await sheet(items,'lugares-da-cidade.png');
+  }),
+  pick:(b)=>{ S.sel=b.dataset.id; S.msg=null; render(); window.scrollTo(0,0); },
+  buy:(b)=>guard(async()=>{
+    const id=b.dataset.id; if(C.over) return say('err','O jogo já acabou.');
+    if(me().loc!=='mundo') return say('err','Países só se compram no Mundo.');
+    if(C.props[id].owner) return say('err','Esse lugar já tem dono.');
+    const cost=buyCost(id); if(cost>me().money) return say('err','Saldo insuficiente. Custa '+fmt(cost)+' e você tem '+fmt(me().money)+'.');
+    await L({type:'buy',prop:id,by:S.uid,price:cost});
+    say('ok','Você comprou '+CAT[id].name+' por '+fmt(cost)+'.');
+  }),
+  build:(b)=>guard(async()=>{
+    const id=b.dataset.id,pr=C.props[id]; if(pr.owner!==S.uid||pr.level>=3||pr.mort) return;
+    if(me().loc!=='mundo') return say('err','Só dá para construir estando no Mundo.');
+    const cost=buildCost(id); if(cost>me().money) return say('err','Saldo insuficiente. Custa '+fmt(cost)+'.');
+    await L({type:'build',prop:id,by:S.uid,cost});
+    say('ok','Construído em '+CAT[id].name+'.');
+  }),
+  sell:(b)=>guard(async()=>{
+    const id=b.dataset.id,pr=C.props[id]; if(pr.owner!==S.uid||pr.level<1) return;
+    const amount=sellValue(id); await L({type:'sell',prop:id,by:S.uid,amount});
+    say('ok','Construção vendida por '+fmt(amount)+'.');
+  }),
+  mortgage:(b)=>guard(async()=>{
+    const id=b.dataset.id,pr=C.props[id]; if(pr.owner!==S.uid||pr.mort||pr.level!==0) return;
+    const amount=cat(id).mort; await L({type:'mortgage',prop:id,by:S.uid,amount});
+    say('ok',CAT[id].name+' hipotecado. Você recebeu '+fmt(amount)+'.');
+  }),
+  unmortgage:(b)=>guard(async()=>{
+    const id=b.dataset.id,pr=C.props[id]; if(pr.owner!==S.uid||!pr.mort) return;
+    const cost=Math.round(cat(id).mort*1.1); if(cost>me().money) return say('err','Saldo insuficiente. Custa '+fmt(cost)+'.');
+    await L({type:'unmortgage',prop:id,by:S.uid,cost});
+    say('ok','Hipoteca de '+CAT[id].name+' paga.');
+  }),
+  rent:(b)=>guard(async()=>{
+    const id=b.dataset.id,pr=C.props[id],c=cat(id); if(C.over) return say('err','O jogo já acabou.');
+    if(!pr.owner||pr.owner===S.uid||pr.mort) return say('err','Aqui não tem aluguel para pagar.');
+    let dice=0; if(c.kind==='company'){ dice=Math.floor(Number(($('#dicePts')||{}).value)); if(!(dice>=1&&dice<=12)) return say('err','Digite os pontos dos dados, de 1 a 12.'); }
+    const amount=rentFor(id,S.uid,dice); await L({type:'rent',prop:id,from:S.uid,to:pr.owner,amount});
+    say('ok','Você pagou '+fmt(amount)+' de aluguel a '+C.P[pr.owner].name+'.');
+  }),
+  bank:()=>guard(async()=>{
+    const kind=$('#bankKind').value, amt=Math.floor(Number($('#bankAmt').value)), note=$('#bankNote').value.trim().slice(0,40);
+    if(C.over) return say('err','O jogo já acabou.'); if(!(amt>0)) return say('err','Digite um valor maior que zero.');
+    if(!S.unlocked) return say('err','Só o dono do jogo usa essa função.');
+    const eff=kind!=='get'?Math.round(amt*(1-bankDisc())):amt;
+    await L({type:'bank',by:S.uid,amount:kind==='get'?amt:-eff,note});
+    $('#bankAmt').value=''; $('#bankNote').value='';
+    say('ok',kind==='get'?'Você recebeu '+fmt(amt)+' do banco.':'Você pagou '+fmt(eff)+' ao banco'+(eff<amt?' (com desconto de Economia)':'')+'.');
+  }),
+  resetAsk:()=>{ S.confirmReset=true; render(); },
+  resetNo:()=>{ S.confirmReset=false; render(); },
+  reset:()=>guard(async()=>{
+    const m=me(); if(m&&!m.dead&&!m.bankrupt) await L({type:'suicide',by:S.uid});
+    S.uid=S.base+'~'+Date.now().toString(36); S.fresh=true; S.confirmReset=false; S.confirmBk=false;
+    S.tab='me'; S.sub='chest'; S.msg=null; S.pending=null; render(); window.scrollTo(0,0);
+  }),
+  bankruptAsk:()=>{ S.confirmBk=true; render(); },
+  bankruptNo:()=>{ S.confirmBk=false; render(); },
+  bankrupt:()=>guard(async()=>{ await L({type:'bankrupt',by:S.uid}); S.confirmBk=false; render(); }),
+  openPending:()=>guard(()=>openChest(S.pending)),
+  openCode:()=>guard(()=>openChest(($('#chestCode')||{}).value)),
+  vote:()=>guard(async()=>{
+    const v=$('#voteFor').value; if(!v) return;
+    await db.collection('votes').doc(S.uid).set({for:v,ts:Date.now()});
+    say('ok','Voto registrado em '+C.P[v].name+'.');
+  }),
+  tally:()=>guard(async()=>{
+    const t={}; for(const [uid,v] of Object.entries(S.votes)){ if(alive(v.for)&&C.P[uid]) t[v.for]=(t[v.for]||0)+(C.P[uid].cls==='politico'?2:1); }
+    const arr=Object.entries(t).sort((a,b)=>b[1]-a[1]);
+    if(!arr.length) return say('err','Ninguém votou ainda.');
+    if(arr.length>1&&arr[0][1]===arr[1][1]) return say('err','Empate. Alguém precisa mudar o voto.');
+    await saveGame({president:arr[0][0],since:Date.now()});
+    await L({type:'elect',who:arr[0][0]});
+    for(const id of Object.keys(S.votes)){ await db.collection('votes').doc(id).delete(); }
+    say('ok',C.P[arr[0][0]].name+' é o novo presidente.');
+  }),
+  event:(b)=>guard(async()=>{
+    const id=b.dataset.id; if(presId()!==S.uid) return say('err','Só o presidente ativa eventos.'); if(!EVENTS[id]) return;
+    if(C.over) return say('err','O jogo já acabou.');
+    await L({type:'event',eventId:id,by:S.uid});
+    S.pending=null; clearHash(); say('ok','Evento ativado: '+EVENTS[id].name+'.');
+  }),
+  randomEvent:()=>guard(async()=>{
+    if(presId()!==S.uid) return; const ids=Object.keys(EVENTS); const id=ids[Math.floor(Math.random()*ids.length)];
+    await L({type:'event',eventId:id,by:S.uid});
+    say('ok','Sorteado: '+EVENTS[id].name+'.');
+  }),
+  tax:()=>guard(async()=>{
+    if(presId()!==S.uid) return say('err','Só o presidente cobra imposto.');
+    await L({type:'tax',by:S.uid}); say('ok','Imposto cobrado.');
+  }),
+  unlock:()=>guard(async()=>{
+    const v=($('#adminPass')||{}).value||'';
+    if(!(window.crypto&&crypto.subtle)) return say('err','Este navegador não consegue conferir a senha.');
+    if(PASS_HASHES.includes(await sha(v.trim()))){ S.unlocked=true; try{sessionStorage.setItem('mt_u','1');}catch(e){} S.msg=null; render(); }
+    else say('err','Senha errada.');
+  }),
+  lock:()=>{ S.unlocked=false; try{sessionStorage.removeItem('mt_u');}catch(e){} render(); },
+  saveUrl:()=>guard(async()=>{ const u=($('#appUrl')||{}).value.trim(); await saveGame({appUrl:u}); say('ok','Link salvo.'); }),
+  saveCat:()=>guard(async()=>{
+    const id=S.edSel; const n=k=>Math.max(0,Math.floor(Number($('#'+k).value)||0));
+    const o={price:n('edPrice'),mort:n('edMort')};
+    if(CAT[id].kind==='country'){ o.casa=n('edCasa'); o.hotel=n('edHotel'); o.rent=[n('edR0'),n('edR1'),n('edR2'),n('edR3')]; }
+    if(!(o.price>0)) return say('err','O preço precisa ser maior que zero.');
+    await db.doc('game/catalog').set({overrides:{...S.catalog,[id]:o}}); say('ok','Valores de '+CAT[id].name+' salvos.');
+  }),
+  genChests:()=>guard(async()=>{
+    const n=Math.max(1,Math.min(24,Math.floor(Number($('#genN').value)||0))), v=Math.floor(Number($('#genV').value)||0);
+    if(!(v>0)) return say('err','Digite o valor de cada baú.');
+    const abc='ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+    for(let i=0;i<n;i++){
+      let code='BAU-'; for(let k=0;k<6;k++) code+=abc[Math.floor(Math.random()*abc.length)];
+      await db.doc('chests/'+code).set({value:v,createdAt:Date.now()});
+    }
+    say('ok',n+' baús criados. Agora baixe a folha de QR.');
+  }),
+  sheetChests:(b)=>guard(async()=>{
+    const unopened=Object.entries(S.chests).filter(([,c])=>typeof c.value==='number'&&!c.claimedBy).map(([k])=>k).sort();
+    const page=Number(b.dataset.page)||0; const items=unopened.slice(page*12,page*12+12).map(code=>({title:'BAÚ DO TESOURO',line:'Escaneie para abrir',code}));
+    await sheet(items,'baus-folha-'+(page+1)+'.png');
+  }),
+  sheetLand:(b)=>guard(async()=>{
+    const page=Number(b.dataset.page)||0; const items=IDS.slice(page*12,page*12+12).map(id=>({title:CAT[id].name.toUpperCase(),line:GROUPS[CAT[id].g],sub:'Escaneie ao parar aqui',code:'PAIS-'+id}));
+    await sheet(items,'paises-folha-'+(page+1)+'.png');
+  }),
+  sheetEvents:()=>guard(async()=>{
+    const items=Object.entries(EVENTS).map(([id,e])=>({title:'CARTA DE EVENTO',line:e.name,sub:e.text,code:'EVT-'+id}));
+    await sheet(items,'cartas-de-evento.png');
+  })
+};
+/* ---------- folha de QR para imprimir (imagem PNG) ---------- */
+function wrap(ctx,text,x,y,w,lh){
+  const words=String(text).split(' '); let line='';
+  for(const word of words){ const t=line?line+' '+word:word; if(ctx.measureText(t).width>w&&line){ ctx.fillText(line,x,y); line=word; y+=lh; } else line=t; }
+  if(line) ctx.fillText(line,x,y); return y;
+}
+async function sheet(items,filename){
+  if(!downloads) return say('err','Download indisponível neste aparelho.');
+  if(typeof QRCode==='undefined') return say('err','A biblioteca de QR não carregou. Verifique a conexão.');
+  const W=1240,H=1754,cols=3,rows=4,mx=50,my=50,cw=(W-2*mx)/cols,ch=(H-2*my)/rows;
+  const cv=document.createElement('canvas'); cv.width=W; cv.height=H; const x=cv.getContext('2d');
+  x.fillStyle='#fff'; x.fillRect(0,0,W,H);
+  items.forEach((it,i)=>{
+    const c=i%cols,r=Math.floor(i/cols),ox=mx+c*cw,oy=my+r*ch;
+    x.strokeStyle='#999'; x.setLineDash([8,8]); x.lineWidth=2; x.strokeRect(ox+4,oy+4,cw-8,ch-8); x.setLineDash([]);
+    x.fillStyle='#111'; x.textAlign='center';
+    x.font='bold 30px sans-serif'; x.fillText(it.title,ox+cw/2,oy+46,cw-30);
+    x.font='24px sans-serif'; const yEnd=wrap(x,it.line,ox+cw/2,oy+80,cw-40,28);
+    const box=document.createElement('div'); new QRCode(box,{text:qrText(it.code),width:280,height:280,correctLevel:QRCode.CorrectLevel.M});
+    const qc=box.querySelector('canvas'); const qy=Math.max(oy+100,yEnd+20);
+    if(qc) x.drawImage(qc,ox+(cw-280)/2,qy,280,280);
+    x.font='bold 26px monospace'; x.fillText(it.code,ox+cw/2,qy+280+38,cw-20);
+    if(it.sub){ x.font='20px sans-serif'; wrap(x,it.sub,ox+cw/2,qy+280+70,cw-40,24); }
+  });
+  const blob=await new Promise(res=>cv.toBlob(res,'image/png'));
+  try{ await downloads.save({filename,data:blob}); say('ok','Folha pronta. Imprima a imagem salva.'); }
+  catch(e){ if(e&&e.code==='declined') say('err','Download cancelado.'); else say('err','Não consegui salvar a imagem ('+(e&&e.code||'erro')+').'); }
+}
+
+/* ---------- inicialização ---------- */
+document.addEventListener('click',e=>{
+  const t=e.target.closest('#tabs [data-tab]'); if(t){ S.tab=t.dataset.tab; S.msg=null; render(); return; }
+  const b=e.target.closest('[data-act]'); if(b&&ACT[b.dataset.act]) ACT[b.dataset.act](b);
+});
+document.addEventListener('change',e=>{
+  const t=e.target;
+  if(t.id==='propSel'){ S.sel=t.value; S.msg=null; render(); }
+  else if(t.id==='ipSel'){ S.ipSel=t.value; }
+  else if(t.id==='placeSel'){ S.place=t.value; S.msg=null; render(); }
+  else if(t.id==='edSel'){ S.edSel=t.value; const c=cat(t.value);
+    const set=(k,v)=>{const el=document.getElementById(k); if(el) el.value=v;};
+    set('edPrice',c.price); set('edMort',c.mort); set('edCasa',c.casa||0); set('edHotel',c.hotel||0);
+    for(let i=0;i<4;i++) set('edR'+i,c.rent?c.rent[i]:0);
+    render(); }
+});
+document.addEventListener('change',e=>{ if(e.target.id==='scanFile'){ scanFile(e.target.files&&e.target.files[0]); } });
+window.addEventListener('hashchange',()=>{ parseHash(); update(); });
+async function acquireLease(fs,path,holder,ttlMs){
+  const lr=fs.doc('locks/'+path.replace(/\//g,'_'));
+  try{
+    const ok=await fs.runTransaction(async tx=>{
+      const s=await tx.get(lr); const d=s.exists?s.data():null; const now=Date.now();
+      if(d&&d.holder!==holder&&d.exp>now) return false;
+      tx.set(lr,{holder,exp:now+ttlMs}); return true;
+    });
+    return {acquired:!!ok};
+  }catch(e){ return {acquired:false}; }
+}
+const FIREBASE_CONFIG={
+  apiKey:"AIzaSyBvJxOrJ9pMJ3PGapbN8b0VfwAVcMkQcq0",
+  authDomain:"mundo-tabuleiros.firebaseapp.com",
+  projectId:"mundo-tabuleiros",
+  storageBucket:"mundo-tabuleiros.firebasestorage.app",
+  messagingSenderId:"1034154515798",
+  appId:"1:1034154515798:web:829e85957abeb24e520af7"
+};
+async function boot(){
+  render();
+  if(!window.firebase||!firebase.initializeApp){ S.fatal='Não consegui carregar o Firebase. Confira a internet e abra de novo.'; return render(); }
+  try{
+    firebase.initializeApp(FIREBASE_CONFIG);
+    const fs=firebase.firestore();
+    try{ fs.settings({ignoreUndefinedProperties:true}); }catch(e){}
+    db={
+      collection:n=>fs.collection(n),
+      doc:p=>{ const r=fs.doc(p); r.acquire=({holder,ttlMs})=>acquireLease(fs,p,holder,ttlMs); return r; }
+    };
+    downloads={ save:async({filename,data})=>{ const a=document.createElement('a'); a.href=URL.createObjectURL(data); a.download=filename; document.body.appendChild(a); a.click(); setTimeout(()=>{ URL.revokeObjectURL(a.href); a.remove(); },4000); } };
+    const cred=await firebase.auth().signInAnonymously();
+    S.uid=cred.user.uid; S.base=S.uid;
+  }catch(e){
+    S.fatal=(e&&e.code==='auth/operation-not-allowed')?'Falta ativar o login Anônimo no Firebase (Authentication > Método de login).':'Não consegui entrar no Firebase ('+((e&&e.code)||'erro')+').';
+    return render();
+  }
+  S.canWrite=true;
+  try{ S.unlocked=sessionStorage.getItem('mt_u')==='1'; }catch(e){}
+  parseHash();
+  const fail=e=>{ S.fatal='Falha ao ler os dados ('+(e&&e.code)+').'+((e&&e.code==='permission-denied')?' Confira as regras do Firestore (precisam permitir usuários logados).':''); render(); };
+  const map=s=>Object.fromEntries(s.docs.map(x=>[x.id,x.data()]));
+  db.collection('players').onSnapshot(s=>{ S.players=map(s); pickLife(); S.loaded.players=true; update(); },fail);
+  db.collection('log').onSnapshot(s=>{ S.log=s.docs.map(x=>({id:x.id,...x.data()})); S.loaded.log=true; update(); },fail);
+  db.collection('chests').onSnapshot(s=>{ S.chests=map(s); S.loaded.chests=true; update(); },fail);
+  db.collection('votes').onSnapshot(s=>{ S.votes=map(s); S.loaded.votes=true; update(); },fail);
+  db.collection('charges').onSnapshot(s=>{ S.charges=map(s); S.loaded.charges=true; update(); },fail);
+  db.collection('iguess').onSnapshot(s=>{ S.iguess=map(s); S.loaded.iguess=true; update(); },fail);
+  db.doc('island/round').onSnapshot(s=>{ S.island=s.exists?s.data():{}; S.loaded.island=true; update(); },fail);
+  db.doc('game/state').onSnapshot(s=>{ S.game=s.exists?s.data():{}; S.loaded.game=true; update(); },fail);
+  db.doc('game/catalog').onSnapshot(s=>{ S.catalog=s.exists&&s.data().overrides?s.data().overrides:{}; S.loaded.catalog=true; update(); },fail);
+  setTimeout(()=>{ if(!ready()){ S.timedOut=true; render(); } },10000);
+}
+boot();
+})();
+</script>
