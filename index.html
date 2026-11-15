@@ -381,11 +381,11 @@ function compute(){
       feed.push({ts:e.ts,text:p.name+' faliu e saiu do jogo'});
       checkRound(e.ts);
     }else if(e.type==='suicide'){
-      const p=P[e.by]; if(!p||p.bankrupt||p.dead) continue;
-      p.dead=true; p.money=0; p.job=null; p.at=null;
+      const p=P[e.by]; if(!p||p.quit) continue;
+      p.quit=true; p.bankrupt=true; p.money=0; p.job=null; p.at=null;
       Object.values(props).forEach(x=>{ if(x.owner===e.by){x.owner=null;x.level=0;x.mort=false;} });
       PLACE_IDS.forEach(id=>{ if(pl[id].owner===e.by){pl[id].owner=null;pl[id].level=0;pl[id].salary=null;} });
-      feed.push({ts:e.ts,text:p.name+' desistiu e morreu'});
+      feed.push({ts:e.ts,text:p.name+' saiu da partida'});
       checkRound(e.ts);
     }else if(e.type==='roll'){
       if(!act(e.by)||rolled.has(e.by)||me_.joined>e.ts) continue;
@@ -483,11 +483,12 @@ function compute(){
       feed.push({ts:e.ts,text:me_.name+' recebeu '+fmt(e.amount)+' de cada jogador'});
     }
   }
-  const all=Object.values(P);
+  const Pv={}; for(const [k,p] of Object.entries(P)) if(!p.quit) Pv[k]=p;
+  const all=Object.values(Pv);
   const dead=all.filter(p=>p.dead);
   const standing=all.filter(p=>!p.dead&&!p.bankrupt).sort((a,b)=>b.money-a.money);
   const last=all.length>=2&&standing.length<=1;
-  C={P,props,pl,bills,round,rolled:[...rolled],taxRate,loanRate,president:curPres(),over:dead.length>0||last,dead,reason:dead.length?'death':'last',winner:standing[0]||null,feed:feed.reverse()};
+  C={P:Pv,props,pl,bills,round,rolled:[...rolled],taxRate,loanRate,president:curPres(),over:dead.length>0||last,dead,reason:dead.length?'death':'last',winner:standing[0]||null,feed:feed.reverse()};
 }
 const me=()=>C.P[S.uid];
 const presId=()=>C.president||null;
@@ -889,6 +890,10 @@ function adminHtml(){
   return '<div class="card stack"><div class="row"><h2 style="margin:0">Área do dono do jogo</h2><button class="btn small ghost" data-act="lock">Trancar</button></div>'+
     '<div><label for="appUrl">Link deste app (para os QR abrirem direto)</label><input type="url" id="appUrl" placeholder="https://seu-app.exemplo.com (opcional)" value="'+esc(S.game.appUrl||'')+'"></div>'+
     '<button class="btn ghost small" data-act="saveUrl">Salvar link</button>'+
+    '<h2 style="margin-top:6px">Recomeçar a partida</h2>'+
+    '<div class="muted small">Apaga a partida inteira para todos (jogadores, dinheiro, terras, cobranças e caça ao tesouro). Todo mundo volta para a escolha de nome e classe. Os baús, seus valores e o link do app ficam, e os baús abertos voltam a ficar fechados.</div>'+
+    (S.confirmSeven?'<div class="msg err">Tem certeza? Isso apaga a partida de todos os celulares e não dá para desfazer.</div><div class="row"><button class="btn danger" data-act="backSeven">Sim, voltar ao sétimo dia</button><button class="btn ghost" data-act="backSevenNo">Cancelar</button></div>'
+                  :'<button class="btn danger" data-act="backSevenAsk">De volta ao sétimo dia</button>')+
     '<h2 style="margin-top:6px">Baús do tesouro</h2>'+
     '<div class="row"><div style="flex:1"><label for="genN">Quantos baús</label><input type="number" id="genN" inputmode="numeric" min="1" max="24" value="6"></div>'+
     '<div style="flex:1"><label for="genV">Valor de cada</label><input type="number" id="genV" inputmode="numeric" min="1" value="100"></div></div>'+
@@ -1062,6 +1067,7 @@ const ACT={
   join:()=>guard(async()=>{
     const name=($('#nick')||{}).value.trim(); const r=document.querySelector('input[name=cls]:checked');
     if(!name) return say('err','Escolha um nome.'); if(!r) return say('err','Escolha uma classe.');
+    if(S.players[S.uid]){ S.uid=S.base+'~'+Date.now().toString(36); S.fresh=true; }
     await db.collection('players').doc(S.uid).set({name:name.slice(0,20),cls:r.value,joinedAt:Date.now(),code:rcode('JOG-',6)});
     S.msg=null;
   }),
@@ -1365,10 +1371,27 @@ const ACT={
     $('#bankAmt').value=''; $('#bankNote').value='';
     say('ok',kind==='get'?'Você recebeu '+fmt(amt)+' do banco.':'Você pagou '+fmt(eff)+' ao banco'+(eff<amt?' (com desconto de Economia)':'')+'.');
   }),
+  backSevenAsk:()=>{ S.confirmSeven=true; render(); },
+  backSevenNo:()=>{ S.confirmSeven=false; render(); },
+  backSeven:()=>guard(async()=>{
+    if(!S.unlocked) return say('err','Só o dono do jogo usa isso.');
+    const del=async(col,ids)=>{ for(let i=0;i<ids.length;i+=20) await Promise.all(ids.slice(i,i+20).map(id=>db.collection(col).doc(id).delete())); };
+    await del('log',(S.log||[]).map(x=>x.id));
+    await del('charges',Object.keys(S.charges||{}));
+    await del('iguess',Object.keys(S.iguess||{}));
+    await del('votes',Object.keys(S.votes||{}));
+    try{ await db.doc('island/round').delete(); }catch(e){}
+    const closed=Object.entries(S.chests||{}).filter(([,c])=>c.claimedBy);
+    for(const [id,c] of closed){ await db.collection('chests').doc(id).set({...c,claimedBy:null,claimedAt:null}); }
+    await saveGame({president:null,since:null});
+    await del('players',Object.keys(S.players||{}));
+    S.confirmSeven=false; S.confirmReset=false; S.confirmBk=false; S.fresh=false; S.uid=S.base;
+    S.tab='me'; S.sub='chest'; S.msg=null; S.pending=null; render(); window.scrollTo(0,0);
+  }),
   resetAsk:()=>{ S.confirmReset=true; render(); },
   resetNo:()=>{ S.confirmReset=false; render(); },
   reset:()=>guard(async()=>{
-    const m=me(); if(m&&!m.dead&&!m.bankrupt) await L({type:'suicide',by:S.uid});
+    const m=me(); if(m) await L({type:'suicide',by:S.uid});
     S.uid=S.base+'~'+Date.now().toString(36); S.fresh=true; S.confirmReset=false; S.confirmBk=false;
     S.tab='me'; S.sub='chest'; S.msg=null; S.pending=null; render(); window.scrollTo(0,0);
   }),
