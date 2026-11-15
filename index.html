@@ -258,7 +258,7 @@ function compute(){
   const P={}, props={}, pl={}, bills={};
   IDS.forEach(id=>{props[id]={owner:null,level:0,mort:false};});
   PLACE_IDS.forEach(id=>{pl[id]={owner:null,level:0,salary:null};});
-  for(const [id,p] of Object.entries(S.players)) P[id]={id,name:p.name,cls:p.cls,code:p.code||'',joined:p.joinedAt||0,money:START,hp:MAXHP,food:100,loc:'cidade',at:null,job:null,skills:[],study:null,vehicle:null,title:null,dest:null,crime:0,ipl:null,rolled:false,lastRoll:null,hist:[],dead:false,bankrupt:false};
+  for(const [id,p] of Object.entries(S.players)) P[id]={id,name:p.name,cls:p.cls,code:p.code||'',joined:p.joinedAt||0,money:START,hp:MAXHP,food:100,loc:'cidade',at:null,job:null,skills:[],study:null,vehicle:null,title:null,dest:null,crime:0,hs:{},npcs:[],jailTo:0,ipl:null,rolled:false,lastRoll:null,hist:[],dead:false,bankrupt:false};
   const feed=[];
   let round=0, billSeq=0, taxRate=10, loanRate=20, president=null; const rolled=new Set();
   let noFallback=false, imp=null, lastImpEnd=0; const reqs={};
@@ -287,6 +287,7 @@ function compute(){
   };
   const endRound=ts=>{
     round++; rolled.clear(); Object.values(P).forEach(p=>{p.rolled=false;});
+    Object.values(P).forEach(p=>{ if(!act(p.id)) return; const h=p.hs[p.loc]; if(h) p.hp=Math.min(MAXHP,p.hp+h.c*5+h.h*15); p.npcs=p.npcs.filter(k=>{ const f=NPC[k].fee; if(p.money>=f){ p.money-=f; return true; } return false; }); });
     const actives=activeFor(ts);
     feed.push({ts,text:'Rodada '+round+' concluída'});
     for(const p of actives){
@@ -399,7 +400,7 @@ function compute(){
       feed.push({ts:e.ts,text:me_.name+' rolou o dado: '+e.value+(e.bonus?' (+'+e.bonus+' do veículo)':'')});
       checkRound(e.ts);
     }else if(e.type==='travel'){
-      if(!act(e.by)||!LOCS[e.to]||me_.loc==='transit'||me_.loc===e.to) continue;
+      if(!act(e.by)||!LOCS[e.to]||me_.loc==='transit'||me_.loc===e.to||me_.jailTo>round) continue;
       if(e.via==='aviao'){ const pid0=curPres(); if(pid0&&pid0!==e.by){ const ok0=Object.values(reqs).filter(r=>r.by===e.by&&r.to===e.to&&r.status==='ok').pop(); if(!ok0) continue; ok0.status='used'; } }
       me_.money-=e.cost; me_.loc='transit'; me_.dest=e.to; me_.at=null; me_.ipl=null;
       if(e.via==='barco'||e.via==='clandestino') me_.crime++;
@@ -470,6 +471,28 @@ function compute(){
       if(e.by!==curPres()||!act(e.who)) continue;
       if(e.buff&&['imposto','salario','banco'].includes(e.buff)){ P[e.who].title={name:String(e.name||'Título').slice(0,30),buff:e.buff,pct:Math.max(0,Math.min(100,Math.floor(e.pct)||0))}; feed.push({ts:e.ts,text:me_.name+' titulou '+P[e.who].name+': '+P[e.who].title.name}); }
       else{ P[e.who].title=null; feed.push({ts:e.ts,text:me_.name+' tirou o título de '+P[e.who].name}); }
+    }else if(e.type==='house'){
+      const c=e.kind==='hotel'?HOTEL_COST:HOUSE_COST; if(!act(e.by)||me_.loc==='transit'||me_.money<c) continue;
+      me_.money-=c; const h=(me_.hs[me_.loc]=me_.hs[me_.loc]||{c:0,h:0}); if(e.kind==='hotel') h.h++; else h.c++;
+      H(me_,e.ts,(e.kind==='hotel'?'Hotel':'Casa')+' em '+LOCS[me_.loc],-c); feed.push({ts:e.ts,text:me_.name+' comprou '+(e.kind==='hotel'?'um hotel':'uma casa')+' em '+LOCS[me_.loc]});
+    }else if(e.type==='hire'){
+      const n=NPC[e.npc]; if(!act(e.by)||!n||me_.npcs.length>=2||me_.money<n.cost) continue;
+      me_.money-=n.cost; me_.npcs.push(e.npc); H(me_,e.ts,'Contratou: '+n.name,-n.cost);
+    }else if(e.type==='assault'){
+      const t=P[e.who]; if(!act(e.by)||!t||!act(e.who)||e.who===e.by||!me_.npcs.includes('capanga')) continue;
+      me_.crime++; if(t.npcs.includes('seguranca')){ feed.push({ts:e.ts,text:'Um assalto contra '+t.name+' foi barrado pelo segurança'}); continue; }
+      const s=Math.min(100,Math.max(10,Math.floor(t.money*0.1)),Math.max(0,t.money)); t.money-=s; me_.money+=s;
+      H(t,e.ts,'Assaltado por capangas',-s); H(me_,e.ts,'Assalto',s); feed.push({ts:e.ts,text:t.name+' foi assaltado'});
+    }else if(e.type==='sniper'){
+      const t=P[e.who]; if(!act(e.by)||!t||!act(e.who)||e.who===e.by||me_.money<SNIPER) continue;
+      me_.money-=SNIPER; me_.crime++; t.hp=Math.max(1,t.hp-Math.round(MAXHP/2));
+      H(me_,e.ts,'Sniper',-SNIPER); H(t,e.ts,'Levou um tiro de sniper',0,-Math.round(MAXHP/2)); feed.push({ts:e.ts,text:t.name+' levou um tiro de sniper e perdeu metade da vida'});
+    }else if(e.type==='arrest'){
+      const t=P[e.who]; if(!act(e.by)||e.by!==curPres()||!t||!act(e.who)||t.crime<1||t.hs[t.loc]) continue;
+      t.jailTo=round+3; t.crime=0; feed.push({ts:e.ts,text:t.name+' foi preso por ordem do presidente'});
+    }else if(e.type==='bail'){
+      if(!act(e.by)||me_.jailTo<=round) continue; const f=me_.npcs.includes('advogado')?Math.round(BAIL/2):BAIL; if(me_.money<f) continue;
+      me_.money-=f; me_.jailTo=0; H(me_,e.ts,'Fiança',-f); feed.push({ts:e.ts,text:me_.name+' pagou fiança e saiu da prisão'});
     }else if(e.type==='tripReq'){
       const pid=curPres();
       if(!act(e.by)||!LOCS[e.to]||!pid||pid===e.by||me_.loc==='transit'||me_.loc===e.to) continue;
@@ -707,7 +730,7 @@ const TESOUROS={COROA:{name:'A Coroa do Rei',val:400},DIAMANTES:{name:'Baú com 
 const ILHA={GRANDEFIGUEIRA:'Grande Figueira',CACHOEIRA:'Cachoeira Branca',PRAIACAVEIRA:'Praia da Caveira',CAVERNA:'Caverna Funda',MONTE:'Monte Negro',ROCHA:'Rocha Redonda',COQUEIROS:'Três Coqueiros',RIACHO:'Riacho Doce',FLORESTA:'Floresta dos Canibais'};
 const ALLP=Object.keys(PIRATAS).map(k=>'P_'+k), ALLT=Object.keys(TESOUROS).map(k=>'T_'+k), ALLL=Object.keys(ILHA).map(k=>'L_'+k);
 const cardName=c=>c[0]==='P'?PIRATAS[c.slice(2)]:c[0]==='T'?TESOUROS[c.slice(2)].name:ILHA[c.slice(2)];
-const FEE_GUESS=30, FEE_CANOE=10, FEE_BOAT=20, FEE_BLACK=150, IMP_COOLDOWN=5*60*1000;
+const FEE_GUESS=30, FEE_CANOE=10, FEE_BOAT=20, FEE_BLACK=150, SNIPER=300, HOUSE_COST=100, HOTEL_COST=250, BAIL=150, NPC={seguranca:{name:'Segurança',fee:15,cost:120,desc:'Barra assaltos de capangas.'},advogado:{name:'Advogado',fee:10,cost:100,desc:'Fiança pela metade.'},capanga:{name:'Capanga',fee:20,cost:150,desc:'Assalta um jogador (10% do dinheiro, de 10 a 100).'}}, IMP_COOLDOWN=5*60*1000;
 const shuffle=a=>{a=a.slice();for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]];}return a;};
 const pick1=a=>a[Math.floor(Math.random()*a.length)];
 const rd=()=>S.island&&S.island.status==='on'?S.island:null;
@@ -717,6 +740,11 @@ const myCards=()=>{const r=rd();return (r&&r.hands&&r.hands[S.uid])||[];};
 function openGuess(){ const r=rd(); if(!r) return null; return Object.entries(S.iguess).map(([id,g])=>({id,...g})).filter(g=>g.rid===r.rid&&!g.done).sort((a,b)=>a.ts-b.ts)[0]||null; }
 function locName(m){ return m.loc==='transit'?'A caminho: '+(LOCS[m.dest]||''):LOCS[m.loc]; }
 
+async function buyHouse(kind){
+  const m=me(); if(!m||C.over) return; if(m.loc==='transit') return say('err','Chegue primeiro ao tabuleiro.');
+  const c=kind==='hotel'?HOTEL_COST:HOUSE_COST; if(c>m.money) return say('err','Saldo insuficiente.');
+  try{ await L({type:'house',by:S.uid,kind}); say('ok','Você comprou '+(kind==='hotel'?'um hotel':'uma casa')+' em '+LOCS[m.loc]+'.'); }catch(e){ say('err','Não consegui comprar.'); }
+}
 function permitState(to){
   const pid=presId(); if(!pid||pid===S.uid) return {need:false,st:'ok'};
   const r=Object.values(C.reqs||{}).filter(x=>x.by===S.uid&&x.to===to&&x.status!=='cancel'&&x.status!=='used').sort((a,b)=>b.ts-a.ts)[0];
@@ -736,12 +764,26 @@ function travelHtml(){
     return '<div class="event"><div><b>'+esc(n)+'</b><span class="small muted">'+(k==='mundo'?'Aqui se compram os países.':k==='ilha'?'Caça ao tesouro dos piratas.':'Volta para a cidade.')+'</span>'+(ps.need&&ps.st==='no'?'<span class="small neg">Negado pelo presidente</span>':'')+(ps.need&&ps.st==='ok'?'<span class="small pos">Autorizado</span>':'')+'</div>'+btn+'</div>';
   }).join('')+'</div>';
 }
+function darkMore(m){
+  const others=Object.keys(C.P).filter(id=>alive(id)&&id!==S.uid), dis=C.over?' disabled':'';
+  const sel=(id)=>'<select id="'+id+'">'+playerOptions(others)+'</select>';
+  let h='';
+  if(m.jailTo>C.round) h+='<div class="card stack"><h2>Prisão</h2><div>Você está preso até a rodada '+m.jailTo+' e não pode viajar.</div><button class="btn" data-act="bail"'+dis+'>Pagar fiança ('+fmt(m.npcs.includes('advogado')?Math.round(BAIL/2):BAIL)+')</button></div>';
+  h+='<div class="card stack"><h2>Sniper</h2><div class="muted small">Um tiro que ignora segurança e tira metade da vida (nunca mata). Custa '+fmt(SNIPER)+' e você fica procurado.</div>'+(others.length?sel('snTarget')+'<button class="btn danger" data-act="sniper"'+dis+'>Atirar</button>':'<div class="muted small">Sem alvos.</div>')+'</div>';
+  h+='<div class="card stack"><h2>Contratar ('+m.npcs.length+'/2)</h2>'+Object.entries(NPC).map(([k,n])=>'<div class="event"><div><b>'+n.name+'</b><span class="small muted">'+n.desc+' '+fmt(n.cost)+' + '+fmt(n.fee)+'/rodada</span></div><button class="btn small ghost" data-act="hire" data-id="'+k+'"'+dis+'>Contratar</button></div>').join('')+
+    (m.npcs.length?'<div class="small">Seus NPCs: <b>'+m.npcs.map(k=>NPC[k].name).join(', ')+'</b></div>':'')+
+    (m.npcs.includes('capanga')&&others.length?sel('capTarget')+'<button class="btn" data-act="assault"'+dis+'>Mandar o capanga assaltar</button>':'')+'</div>';
+  const hs=Object.entries(m.hs).map(([k,v])=>LOCS[k]+': '+v.c+' casa(s), '+v.h+' hotel(is)').join(' · ');
+  h+='<div class="card stack"><h2>Casinhas</h2><div class="muted small">Escaneie o QR de casa ou hotel no tabuleiro onde você está: casa '+fmt(HOUSE_COST)+', hotel '+fmt(HOTEL_COST)+'. Descanso a cada rodada naquele tabuleiro (casa +5 de vida, hotel +15) e esconderijo contra prisão.</div><div class="small">'+(hs||'Você ainda não tem casas.')+'</div></div>';
+  return h;
+}
 function darkHtml(){
   const m=me(); if(m.loc==='transit') return '<div class="card stack"><h2>???</h2><div>Você está em viagem. Chegue primeiro.</div></div>';
   const dis=C.over?' disabled':''; const dests=Object.entries(LOCS).filter(([k])=>k!==m.loc);
   const boats=dests.filter(([k])=>k==='ilha'||m.loc==='ilha');
   return '<div class="card stack"><h2>???</h2><div class="muted small">Coisas que o governo não pode saber. Nada daqui aparece no mural e o presidente não pode barrar, mas você fica <b>procurado</b>.</div></div>'+
     '<div class="card stack"><h2>Voo clandestino</h2><div class="muted small">Viaja sem pedir autorização ao presidente, por '+fmt(FEE_BLACK)+'.</div>'+dests.map(([k,n])=>'<div class="event"><div><b>'+esc(n)+'</b></div><button class="btn small ghost" data-act="darkFly" data-id="'+k+'"'+dis+'>'+fmt(FEE_BLACK)+'</button></div>').join('')+msgHtml()+'</div>'+
+    darkMore(m)+
     (boats.length?'<div class="card stack"><h2>Barco clandestino</h2><div class="muted small">Um estranho te leva de barco por '+fmt(FEE_BOAT)+', só de e para a ilha. Também deixa você procurado.</div>'+boats.map(([k,n])=>'<div class="event"><div><b>'+esc(n)+'</b></div><button class="btn small ghost" data-act="boat" data-id="'+k+'"'+dis+'>'+fmt(FEE_BOAT)+'</button></div>').join('')+'</div>':'');
 }
 function impeachHtml(){
@@ -987,6 +1029,7 @@ function adminHtml(){
     '<button class="btn ghost small" data-act="sheetEvents">Baixar cartas de evento</button>'+
     '<button class="btn ghost small" data-act="sheetPlaces">Baixar QR dos lugares da cidade</button>'+
     '<button class="btn ghost small" data-act="sheetBoards">Baixar QR dos 3 tabuleiros</button>'+
+    '<button class="btn ghost small" data-act="sheetHouses">Baixar QR de casa e hotel</button>'+
     '<button class="btn ghost small" data-act="sheetIsland">Baixar QR dos lugares da ilha</button>'+
     '<div class="muted small">Cada folha é uma imagem para imprimir. O valor do baú não aparece na carta.</div>'+
     (downloads?'':'<div class="muted small">Neste aparelho o download de imagens não está disponível. Tente abrir o app no navegador do celular.</div>')+
@@ -1028,6 +1071,8 @@ function powerHtml(){
   if(iAmPres){
     const pend=Object.values(C.reqs||{}).filter(r=>r.status==='pending'&&C.P[r.by]);
     h+='<div class="card stack"><h2>Aeroporto: pedidos de voo</h2>'+(pend.length?pend.map(r=>'<div class="event"><div><b>'+esc(C.P[r.by].name)+'</b><span class="small muted">quer ir para '+esc(LOCS[r.to])+'</span></div><div class="row" style="gap:6px"><button class="btn small" data-act="tripDec" data-id="'+r.id+'" data-ok="1">Autorizar</button><button class="btn small ghost" data-act="tripDec" data-id="'+r.id+'" data-ok="0">Negar</button></div></div>').join(''):'<div class="muted small">Nenhum pedido agora. Quem quiser voar precisa da sua autorização.</div>')+'</div>';
+    const wanted=Object.keys(C.P).filter(id=>alive(id)&&id!==S.uid&&C.P[id].crime>0);
+    h+='<div class="card stack"><h2>Polícia</h2>'+(wanted.length?'<div><label for="arTarget">Procurado</label><select id="arTarget">'+playerOptions(wanted)+'</select></div><button class="btn danger" data-act="arrest">Mandar prender (3 rodadas)</button><div class="muted small">Quem tem casa no tabuleiro onde está não pode ser preso.</div>':'<div class="muted small">Ninguém procurado agora.</div>')+'</div>';
     h+='<div class="card stack"><h2>Gabinete</h2>'+
       '<div><label for="rateIn">Imposto (0 a 100%) cobrado de todos a cada 5 rodadas</label><input type="number" id="rateIn" inputmode="numeric" min="0" max="100" value="'+C.taxRate+'"></div><button class="btn" data-act="setRate"'+(C.over?' disabled':'')+'>Definir imposto</button>'+
       '<h2 style="margin-top:6px">Banco</h2><div><label for="bankRate">Juros dos empréstimos (0 a 100%)</label><input type="number" id="bankRate" inputmode="numeric" min="0" max="100" value="'+C.loanRate+'"></div><button class="btn ghost" data-act="setBank"'+(C.over?' disabled':'')+'>Definir juros do banco</button>'+
@@ -1116,6 +1161,7 @@ async function guard(fn){
 function clearHash(){ try{ if(location.hash) location.hash=''; }catch(e){} }
 function handleCode(raw){
   const h=String(raw||'').trim().toUpperCase(); S.msg=null;
+  if(h==='CASA-LOJA'||h==='HOTEL-LOJA'){ S.tab='dark'; buyHouse(h==='HOTEL-LOJA'?'hotel':'casa'); return true; }
   if(/^(BAU|EVT)-[A-Z0-9]+$/.test(h)){ S.pending=h; S.tab='more'; S.sub=h.startsWith('BAU-')?'chest':'power'; return true; }
   if(/^LOC-(CIDADE|MUNDO|ILHA)$/.test(h)){ S.locCode=h.slice(4).toLowerCase(); S.tab='me'; return true; }
   if(/^ISLA-[A-Z0-9]+$/.test(h)&&ILHA[h.slice(5)]){ S.ipSel=h.slice(5); S.tab='ilha'; return true; }
@@ -1354,6 +1400,12 @@ const ACT={
     if(C.over||me().loc!=='cidade'||has('ROUPA')) return; const cost=pcost(60,'SHOPPING'); if(cost>me().money) return say('err','Saldo insuficiente.');
     await L({type:'shop',by:S.uid,cost,to:placeOwner('SHOPPING')||null}); say('ok','Roupa social comprada.');
   }),
+  hire:(b)=>guard(async()=>{ const n=NPC[b.dataset.id], m=me(); if(!n||C.over) return; if(m.npcs.length>=2) return say('err','Limite de 2 NPCs.'); if(n.cost>m.money) return say('err','Saldo insuficiente.'); await L({type:'hire',by:S.uid,npc:b.dataset.id}); say('ok',n.name+' contratado.'); }),
+  assault:()=>guard(async()=>{ const w=($('#capTarget')||{}).value; if(!w||C.over) return; await L({type:'assault',by:S.uid,who:w}); say('ok','O capanga saiu para o serviço.'); }),
+  sniper:()=>guard(async()=>{ const w=($('#snTarget')||{}).value; if(!w||C.over) return; if(SNIPER>me().money) return say('err','Saldo insuficiente.'); await L({type:'sniper',by:S.uid,who:w,cost:SNIPER}); say('ok','Tiro certeiro.'); }),
+  arrest:()=>guard(async()=>{ const w=($('#arTarget')||{}).value; if(!w||C.over) return; await L({type:'arrest',by:S.uid,who:w}); }),
+  bail:()=>guard(async()=>{ await L({type:'bail',by:S.uid}); }),
+  sheetHouses:()=>guard(async()=>{ await sheet([{title:'CASA',line:'Escaneie para comprar uma casa',sub:'Custa '+fmt(HOUSE_COST)+' onde você estiver',code:'CASA-LOJA'},{title:'HOTEL',line:'Escaneie para comprar um hotel',sub:'Custa '+fmt(HOTEL_COST)+' onde você estiver',code:'HOTEL-LOJA'}],'casas-hoteis.png'); }),
   tripReq:(b)=>guard(async()=>{
     const to=b.dataset.id; if(!LOCS[to]||C.over||me().loc==='transit') return;
     await L({type:'tripReq',by:S.uid,to}); say('ok','Pedido enviado ao presidente. Espere a resposta.');
