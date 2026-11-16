@@ -227,12 +227,6 @@ const CAT={};
 BASE.forEach(([id,name,g,price,casa,hotel,rent,mort])=>{CAT[id]={id,name,kind:'country',g,price,casa,hotel,rent,mort};});
 COMP.forEach(([id,name])=>{CAT[id]={id,name,kind:'company',g:'CIA',price:100,mort:80};});
 const IDS=Object.keys(CAT);
-// Percursos físicos: a casa 1 do Mundo é Pequim; Cidade começa após o rio,
-// no sentido contrário à frase vermelha. Os índices contam os trechos entre linhas brancas.
-const WORLD_ROUTE=['PEQUIM','VIENA','VARSOVIA','BERLIM','AMSTERDA','PARIS','LONDRES','DUBLIN','ATENAS','LISBOA','MADRI','ROMA','MOSCOU','CAIRO','TRIPOLI','KUALALUMPUR','BANGCOC','HANOI','NOVADELHI','HAVANA','WASHINGTON','OTTAWA','BUENOSAIRES','BRASILIA','SANTIAGO','ESTOCOLMO','OSLO'];
-const CITY_ROUTE=Array.from({length:36},(_,i)=>({id:'CIDADE_'+(i+1),name:'Casa '+(i+1),place:null}));
-// Referências visíveis no tabuleiro da Cidade; as demais casas continuam numeradas.
-[['PADARIA',4],['SHOPPING',9],['CONCESSIONARIA',15],['MERCADO',22],['PADARIA',29],['MERCADO',34]].forEach(([place,n])=>{if(CITY_ROUTE[n-1]) CITY_ROUTE[n-1].place=place;});
 const LEVEL=['sem construção','1 casa','2 casas','hotel'];
 
 const $=s=>document.querySelector(s);
@@ -264,7 +258,7 @@ function compute(){
   const P={}, props={}, pl={}, bills={};
   IDS.forEach(id=>{props[id]={owner:null,level:0,mort:false};});
   PLACE_IDS.forEach(id=>{pl[id]={owner:null,level:0,salary:null};});
-  for(const [id,p] of Object.entries(S.players)) P[id]={id,name:p.name,cls:p.cls,code:p.code||'',joined:p.joinedAt||0,money:START,hp:MAXHP,food:100,loc:'cidade',at:null,job:null,skills:[],study:null,vehicle:null,title:null,dest:null,crime:0,hs:{},npcs:[],jailTo:0,ipl:null,boardPos:-1,boardLap:0,landed:null,rolled:false,lastRoll:null,hist:[],dead:false,bankrupt:false};
+  for(const [id,p] of Object.entries(S.players)) P[id]={id,name:p.name,cls:p.cls,code:p.code||'',joined:p.joinedAt||0,money:START,hp:MAXHP,food:100,loc:'cidade',at:null,job:null,skills:[],study:null,vehicle:null,title:null,dest:null,crime:0,hs:{},npcs:[],jailTo:0,ipl:null,rolled:false,lastRoll:null,hist:[],dead:false,bankrupt:false};
   const feed=[];
   let round=0, billSeq=0, taxRate=10, loanRate=20, president=null; const rolled=new Set();
   let noFallback=false, imp=null, lastImpEnd=0; const reqs={};
@@ -362,7 +356,7 @@ function compute(){
       feed.push({ts:e.ts,text:boss.name+' cobrou imposto: '+fmt(sum)+' arrecadados'});
     }else if(e.type==='buy'){
       if(!pr||pr.owner||!act(e.by)) continue;
-      pr.owner=e.by; P[e.by].money-=e.price; H(P[e.by],e.ts,'Comprou '+pn,-e.price); if(P[e.by].landed===e.prop) P[e.by].landed=null;
+      pr.owner=e.by; P[e.by].money-=e.price; H(P[e.by],e.ts,'Comprou '+pn,-e.price);
       feed.push({ts:e.ts,text:P[e.by].name+' comprou '+pn+' por '+fmt(e.price)});
     }else if(e.type==='build'){
       if(!pr||pr.owner!==e.by||pr.mort||pr.level>=3||!act(e.by)) continue;
@@ -403,27 +397,8 @@ function compute(){
     }else if(e.type==='roll'){
       if(!act(e.by)||rolled.has(e.by)||me_.joined>e.ts) continue;
       rolled.add(e.by); me_.rolled=true; me_.lastRoll=e.value+(e.bonus||0);
-      const board=me_.loc==='mundo'?'mundo':(me_.loc==='cidade'?'cidade':null);
-      if(board){
-        const route=board==='mundo'?WORLD_ROUTE:CITY_ROUTE;
-        const oldPos=Math.max(-1,Math.min(route.length-1,Number.isInteger(me_.boardPos)?me_.boardPos:-1));
-        const raw=oldPos+Math.max(0,Number(e.value)||0)+(e.bonus||0);
-        const laps=Math.floor(raw/route.length), pos=raw%route.length;
-        me_.boardPos=pos; me_.boardLap=(me_.boardLap||0)+laps;
-        me_.landed=board==='mundo'?route[pos]:route[pos];
-        if(board==='mundo') me_.at=route[pos];
-        if(board==='cidade') me_.at=route[pos].place||null;
-        if(laps&&board==='mundo'){ me_.loc='ilha'; me_.boardPos=0; me_.landed=null; me_.at=null; feed.push({ts:e.ts,text:me_.name+' completou uma volta no Mundo e chegou à Ilha dos Piratas'}); }
-        else feed.push({ts:e.ts,text:me_.name+' avançou '+(e.value+(e.bonus||0))+' casas no tabuleiro '+(board==='mundo'?'Mundo':'Cidade')+'. Parou na casa '+(pos+1)+'.'});
-      }
-      feed.push({ts:e.ts,text:me_.name+' informou o dado: '+e.value+(e.bonus?' (+'+e.bonus+' do veículo)':'')});
+      feed.push({ts:e.ts,text:me_.name+' rolou o dado: '+e.value+(e.bonus?' (+'+e.bonus+' do veículo)':'')});
       checkRound(e.ts);
-    }else if(e.type==='landrent'){
-      if(!act(e.by)||!act(e.to)||!e.amount) continue;
-      const f=P[e.by],t=P[e.to]; if(f.landed===e.prop) f.landed=null;
-      if(e.defer){ addBill('rent',e.by,e.to,e.amount,'Aluguel em '+(cat(e.prop)?.name||e.prop),3,e.ts); H(f,e.ts,'Deixou aluguel pendente para '+t.name,0); }
-      else { f.money-=e.amount; t.money+=e.amount; H(f,e.ts,'Pagou aluguel para '+t.name,-e.amount); H(t,e.ts,'Recebeu aluguel de '+f.name,e.amount); }
-      feed.push({ts:e.ts,text:f.name+(e.defer?' deixou':' pagou')+' '+fmt(e.amount)+' de aluguel para '+t.name});
     }else if(e.type==='travel'){
       if(!act(e.by)||!LOCS[e.to]||me_.loc==='transit'||me_.loc===e.to||me_.jailTo>round) continue;
       if(e.via==='aviao'){ const pid0=curPres(); if(pid0&&pid0!==e.by){ const ok0=Object.values(reqs).filter(r=>r.by===e.by&&r.to===e.to&&r.status==='ok').pop(); if(!ok0) continue; ok0.status='used'; } }
@@ -636,22 +611,9 @@ function meHtml(){
     '<div>Emprego<b>'+(m.job?esc(PLACES[m.job].name):'Sem emprego')+'</b></div>'+
     '<div>Veículo<b>'+(veh?esc(veh.name)+' (+'+veh.bonus+')':'A pé')+'</b></div>'+
     '<div>Procurado<b>'+(m.crime?m.crime+' crime'+(m.crime>1?'s':''):'Não')+'</b></div><div>Título<b>'+(m.title?esc(m.title.name)+' ('+BUFFS[m.title.buff]+' '+m.title.pct+'%)':'Nenhum')+'</b></div><div>Estudando<b>'+(m.study?esc(COURSES[m.study.course].name)+' ('+m.study.left+' rod.)':'Nada')+'</b></div></div></div>';
-  if(m.loc==='mundo'||m.loc==='cidade'){
-    const route=m.loc==='mundo'?WORLD_ROUTE:CITY_ROUTE; const sq=route[Math.max(0,Math.min(route.length-1,m.boardPos<0?0:m.boardPos))];
-    const sqName=m.boardPos<0?'Na PARTIDA':(m.loc==='mundo'?(CAT[sq]?CAT[sq].name:sq):(sq&&sq.name?sq.name:'Casa'));
-    h+='<div class="card stack"><h2>Posição no tabuleiro</h2><div class="row"><b>'+esc(locName(m))+'</b><span class="chip">'+(m.boardPos<0?'PARTIDA':'Casa '+(m.boardPos+1)+' / '+route.length)+'</span></div><div class="title">'+esc(sqName)+'</div><div class="muted small">Voltas completas: '+(m.boardLap||0)+'</div></div>';
-    if(m.loc==='mundo'&&CAT[sq]){
-      const pr=C.props[sq], owner=pr&&pr.owner&&C.P[pr.owner];
-      if(pr&&!owner) h+='<div class="card stack"><h2>Casa livre: '+esc(CAT[sq].name)+'</h2><div>Preço: <b>'+fmt(buyCost(sq))+'</b></div><button class="btn" data-act="landBuy" data-id="'+sq+'"'+(C.over?' disabled':'')+'>Comprar este país</button></div>';
-      else if(owner&&owner.id!==S.uid&&!pr.mort){ const rent=rentFor(sq,S.uid,m.lastRoll||1); h+='<div class="card stack"><h2>Aluguel: '+esc(CAT[sq].name)+'</h2><div>Proprietário: <b>'+esc(owner.name)+'</b></div><div>Valor: <b>'+fmt(rent)+'</b></div><div class="row"><button class="btn" data-act="landRent" data-id="'+sq+'" data-defer="0">Pagar agora</button><button class="btn ghost" data-act="landRent" data-id="'+sq+'" data-defer="1">Deixar como dívida</button></div></div>'; }
-      else if(owner&&owner.id===S.uid) h+='<div class="card"><b>Você é o proprietário desta casa. Sem aluguel!</b></div>';
-    }else if(m.loc==='cidade'&&sq&&sq.place){
-      h+='<div class="card stack"><h2>Você chegou à área: '+esc(PLACES[sq.place].name)+'</h2><div class="muted small">As opções deste estabelecimento aparecem abaixo.</div></div>'+placePanel(sq.place);
-    }
-  }
   h+='<div class="card stack"><div class="row"><h2 style="margin:0">Rodada '+(C.round+1)+'</h2><span class="chip">Imposto <b>'+C.taxRate+'%</b></span></div>'+
-    (m.rolled?'<div>Você informou <b>'+m.lastRoll+'</b>. Esperando: <b>'+(waiting.length?esc(waiting.join(', ')):'ninguém')+'</b>.</div>'
-             :'<div><label for="physicalDie">Resultado do dado físico (1 a 6)</label><input id="physicalDie" type="number" inputmode="numeric" min="1" max="6" step="1" placeholder="Ex.: 4"></div><button class="btn" data-act="roll"'+dis+'>Confirmar movimento'+(diceBonus(m)?' (+'+diceBonus(m)+' do veículo)':'')+'</button><div class="muted small">Role o dado de verdade e informe o número aqui. As linhas brancas representam as casas.</div>')+
+    (m.rolled?'<div>Você rolou <b>'+m.lastRoll+'</b>. Esperando: <b>'+(waiting.length?esc(waiting.join(', ')):'ninguém')+'</b>.</div>'
+             :'<button class="btn" data-act="roll"'+dis+'>Rolar o dado'+(diceBonus(m)?' (+'+diceBonus(m)+' do veículo)':'')+'</button><div class="muted small">A rodada passa quando todos rolarem uma vez.</div>')+
     '<div class="list">'+Object.values(C.P).filter(p=>alive(p.id)).map(p=>'<div class="item"><span>'+esc(p.name)+'</span><span class="muted">'+(p.rolled?'rolou '+p.lastRoll:'ainda não rolou')+'</span></div>').join('')+'</div>'+
     '<div class="muted small">A cada 3 rodadas: aluguel de quem está num país alheio. A cada 5: imposto do prefeito e salários.</div>'+msgHtml()+'</div>';
   h+='<div class="card stack"><h2>Contas a pagar</h2>'+(myBills.length?myBills.map(b=>{
@@ -1399,20 +1361,9 @@ const ACT={
   sub:(b)=>{ S.sub=b.dataset.v; S.msg=null; render(); },
   goPower:()=>{ S.tab='more'; S.sub='power'; S.msg=null; render(); window.scrollTo(0,0); },
   roll:()=>guard(async()=>{
-    const m=me(); if(C.over) return say('err','O jogo já acabou.'); if(m.rolled) return say('err','Você já confirmou o dado nesta rodada.');
-    const value=Math.floor(Number(($('#physicalDie')||{}).value)); if(!(value>=1&&value<=6)) return say('err','Informe o resultado do dado físico entre 1 e 6.');
-    const bonus=diceBonus(m); await L({type:'roll',by:S.uid,value,bonus}); say('ok','Movimento confirmado: '+value+(bonus?' +'+bonus+' do veículo':'')+'.');
-  }),
-  landBuy:(b)=>guard(async()=>{
-    const id=b.dataset.id, pr=C.props[id]; if(!CAT[id]||!pr||pr.owner||me().loc!=='mundo') return say('err','Esta casa não está disponível.');
-    const price=buyCost(id); if(price>me().money) return say('err','Saldo insuficiente.');
-    await L({type:'buy',prop:id,by:S.uid,price}); say('ok','Você comprou '+CAT[id].name+' por '+fmt(price)+'.');
-  }),
-  landRent:(b)=>guard(async()=>{
-    const id=b.dataset.id, pr=C.props[id]; if(!pr||!pr.owner||pr.owner===S.uid) return;
-    const amount=rentFor(id,S.uid,me().lastRoll||1); if(!(amount>0)) return; if(b.dataset.defer!=='1'&&amount>me().money) return say('err','Saldo insuficiente. Escolha deixar como dívida.');
-    await L({type:'landrent',by:S.uid,to:pr.owner,prop:id,amount,defer:b.dataset.defer==='1'});
-    say('ok',b.dataset.defer==='1'?'Aluguel registrado como dívida. Você poderá pagar depois.':'Aluguel pago.');
+    const m=me(); if(C.over) return say('err','O jogo já acabou.'); if(m.rolled) return say('err','Você já rolou nesta rodada.');
+    const value=1+Math.floor(Math.random()*6), bonus=diceBonus(m);
+    await L({type:'roll',by:S.uid,value,bonus}); say('ok','Você tirou '+value+(bonus?' +'+bonus+' do veículo':'')+'.');
   }),
   payBill:(b)=>guard(async()=>{
     const bl=C.bills[b.dataset.id]; if(!bl||bl.paid||bl.payer!==S.uid) return say('err','Essa conta já foi paga.');
