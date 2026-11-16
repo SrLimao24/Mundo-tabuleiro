@@ -61,7 +61,7 @@ h2{font-size:12px;text-transform:uppercase;letter-spacing:.09em;color:var(--mute
 .bar>i{display:block;height:100%;background:var(--good);border-radius:99px}
 .bar.low>i{background:var(--bad)}
 label{display:block;font-size:13px;color:var(--muted);margin-bottom:4px}
-input[type=text],input[type=number],input[type=url],input[type=password],select{
+input[type=text],input[type=number],input[type=url],input[type=password],select,textarea{
   width:100%;background:var(--surface-2);color:var(--fg);border:1px solid var(--line);
   border-radius:10px;padding:12px;font:inherit;font-size:16px;
 }
@@ -97,7 +97,7 @@ input[type=text],input[type=number],input[type=url],input[type=password],select{
 code{font-family:ui-monospace,Menlo,monospace;font-size:13px;background:var(--surface-2);padding:2px 6px;border-radius:6px;overflow-wrap:anywhere}
 nav{
   position:fixed;right:0;top:50%;transform:translateY(-50%);z-index:5;
-  display:flex;flex-direction:column;gap:3px;
+  display:flex;flex-direction:column;gap:3px;max-height:90vh;overflow-y:auto;
 }
 nav button{
   writing-mode:vertical-rl;background:var(--surface);color:var(--muted);border:1px solid var(--line);border-right:0;
@@ -132,6 +132,9 @@ nav button[aria-current=true]{background:var(--gold);color:var(--on-gold);min-wi
   <button data-tab="ilha">Ilha</button>
   <button data-tab="more">Mais</button>
   <button data-tab="dark">???</button>
+  <button data-tab="market">Bolsa</button>
+  <button data-tab="messages">Mensagens</button>
+  <button data-tab="battle">PvP</button>
 </nav>
 <div id="roulette" hidden><div class="rbox"><div class="rt"></div><div class="rwrap"><i class="ptr"></i><div class="wheel"></div></div><div class="rr"></div></div></div>
 
@@ -232,7 +235,7 @@ const LEVEL=['sem construção','1 casa','2 casas','hotel'];
 const $=s=>document.querySelector(s);
 const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const fmt=n=>(n<0?'−':'')+'$'+Math.abs(Math.round(n)).toLocaleString('pt-BR');
-const S={players:{},log:[],chests:{},votes:{},game:{},catalog:{},loaded:{},tab:'me',sub:'chest',place:'ESCOLA',msg:null,pending:null,sel:'ROMA',edSel:'ROMA',uid:null,unlocked:false,canWrite:true,busy:false,timedOut:false,fatal:null,confirmBk:false,charges:{},island:{},iguess:{},locCode:null,ipSel:'GRANDEFIGUEIRA',tick:null,payCode:null,sendTarget:null,forceSend:false,codeBusy:false,hashCode:null};
+const S={players:{},log:[],chests:{},votes:{},game:{},catalog:{},loaded:{},tab:'me',sub:'chest',place:'ESCOLA',msg:null,pending:null,sel:'ROMA',edSel:'ROMA',uid:null,unlocked:false,canWrite:true,busy:false,timedOut:false,fatal:null,confirmBk:false,charges:{},island:{},iguess:{},locCode:null,ipSel:'GRANDEFIGUEIRA',tick:null,payCode:null,sendTarget:null,forceSend:false,codeBusy:false,hashCode:null,adminPlayers:{},messages:[],market:{},battle:{}};
 let db=null, downloads=null, C={P:{},props:{},pl:{},bills:{},round:0,taxRate:10,loanRate:20,president:null,over:false,dead:[],reason:'death',winner:null,feed:[]};
 
 function cat(id){
@@ -258,7 +261,7 @@ function compute(){
   const P={}, props={}, pl={}, bills={};
   IDS.forEach(id=>{props[id]={owner:null,level:0,mort:false};});
   PLACE_IDS.forEach(id=>{pl[id]={owner:null,level:0,salary:null};});
-  for(const [id,p] of Object.entries(S.players)) P[id]={id,name:p.name,cls:p.cls,code:p.code||'',joined:p.joinedAt||0,money:START,hp:MAXHP,food:100,loc:'cidade',at:null,job:null,skills:[],study:null,vehicle:null,title:null,dest:null,crime:0,hs:{},npcs:[],jailTo:0,ipl:null,rolled:false,lastRoll:null,hist:[],dead:false,bankrupt:false};
+  for(const [id,p] of Object.entries(S.players)) P[id]={id,name:p.name,cls:p.cls,code:p.code||'',joined:p.joinedAt||0,money:START,hp:MAXHP,food:100,loc:'cidade',at:null,job:null,skills:[],study:null,vehicle:null,title:null,dest:null,crime:0,hs:{},npcs:[],jailTo:0,ipl:null,rolled:false,lastRoll:null,hist:[],dead:false,bankrupt:false,coins:{},inventory:Array.isArray(p.inventory)?p.inventory:[],equipped:p.equipped||null,status:(S.adminPlayers[id]&&S.adminPlayers[id].status)||'Cidadão',adminTitle:(S.adminPlayers[id]&&S.adminPlayers[id].title)||'',adminEffect:(S.adminPlayers[id]&&S.adminPlayers[id].effect)||''};
   const feed=[];
   let round=0, billSeq=0, taxRate=10, loanRate=20, president=null; const rolled=new Set();
   let noFallback=false, imp=null, lastImpEnd=0; const reqs={};
@@ -303,6 +306,14 @@ function compute(){
         if(!act(p.id)||p.loc!=='mundo'||!p.at) continue;
         const pr=props[p.at];
         if(pr&&pr.owner&&pr.owner!==p.id&&!pr.mort&&act(pr.owner)) addBill('rent',p.id,pr.owner,rentRep(p.at),'Estadia em '+CAT[p.at].name,3,ts);
+      }
+    }
+    // Salários personalizados definidos pelo dono: a cada N rodadas, por jogador.
+    for(const p of actives){
+      const cfg=S.adminPlayers&&S.adminPlayers[p.id];
+      if(cfg&&cfg.salaryEnabled&&Number(cfg.salary)>0){
+        const every=Math.max(1,Math.floor(Number(cfg.salaryEvery)||1));
+        if(round%every===0){ const pct=Math.max(-100,Math.min(300,Number(cfg.salaryPct)||0)); const pay=Math.max(0,Math.floor(Number(cfg.salary)*(1+pct/100))); p.money+=pay; H(p,ts,'Salário especial do jogo',pay); }
       }
     }
     if(round%5===0){
@@ -543,6 +554,18 @@ function compute(){
       me_.money+=e.amount*others.length; others.forEach(q=>{q.money-=e.amount;H(q,e.ts,'Pagou a '+me_.name,-e.amount);});
       H(me_,e.ts,'Recebeu de cada jogador',e.amount*others.length);
       feed.push({ts:e.ts,text:me_.name+' recebeu '+fmt(e.amount)+' de cada jogador'});
+    }else if(e.type==='adminSet'){
+      const t=P[e.target]; if(!t) continue;
+      if(Number.isFinite(e.money)) t.money=e.money;
+      if(Number.isFinite(e.hp)){ t.hp=Math.max(0,Math.min(MAXHP,e.hp)); t.dead=t.hp<=0; }
+      if(Number.isFinite(e.food)) t.food=Math.max(0,Math.min(100,e.food));
+      if(e.status) t.status=e.status; if(e.title!==undefined) t.adminTitle=e.title; if(e.cls) t.cls=e.cls; if(e.job!==undefined) t.job=e.job||null;
+      H(t,e.ts,'Ajuste do proprietário',0,0);
+    }else if(e.type==='cryptoTrade'){
+      const t=P[e.by]; if(!t||!act(e.by)) continue;
+      t.coins=t.coins||{}; const qty=Number(e.qty)||0, total=Number(e.total)||0;
+      if(e.side==='buy'&&t.money>=total){ t.money-=total; t.coins[e.coin]=(Number(t.coins[e.coin])||0)+qty; H(t,e.ts,'Comprou '+e.coin+' na bolsa',-total); }
+      if(e.side==='sell'&&(Number(t.coins[e.coin])||0)>=qty){ t.coins[e.coin]-=qty; t.money+=total; H(t,e.ts,'Vendeu '+e.coin+' na bolsa',total); }
     }
   }
   const Pv={}; for(const [k,p] of Object.entries(P)) if(!p.quit) Pv[k]=p;
@@ -707,6 +730,43 @@ function resetHtml(){
   (S.confirmReset?'<div class="msg err">Tem certeza? Isso não dá para desfazer.</div><div class="row"><button class="btn danger" data-act="reset">Sim, morrer e recomeçar</button><button class="btn ghost" data-act="resetNo">Cancelar</button></div>'
                   :'<button class="btn ghost small" data-act="resetAsk">Resetar / morrer</button>')+'</div>';
 }
+const fmtCoin=n=>'$'+Number(n||0).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});
+const COINS=[{id:'LUA',name:'LuaCoin',base:100,icon:'🌙'},{id:'ORO',name:'Ouro Digital',base:250,icon:'🪙'},{id:'NEX',name:'Nexus',base:50,icon:'🔷'},{id:'FEN',name:'Fênix',base:10,icon:'🔥'}];
+const GEAR=[{id:'escudo',name:'Escudo Arcano',price:180,power:2,guard:8,desc:'Proteção extra em duelos.'},{id:'orbe',name:'Orbe de Energia',price:240,power:8,guard:0,desc:'Aumenta a força das jogadas.'},{id:'botas',name:'Botas Velozes',price:120,power:2,guard:2,desc:'Pequeno bônus geral.'},{id:'companheiro',name:'Companheiro Leal',price:300,power:4,guard:5,desc:'Um aliado que ajuda no duelo.'}];
+function marketHtml(){
+  const m=me(), prices=S.market.prices||{}; let h='<div class="card stack"><h2>📈 Bolsa de Criptomoedas</h2><div class="muted small">Mercado fictício e totalmente offline. Os preços mudam a cada 5 rodadas, entre −99,5% e +300%.</div><div class="chip">Ciclo: '+(S.market.cycle||0)+' · Próxima atualização na rodada '+((Math.floor(C.round/5)+1)*5)+'</div>';
+  h+=COINS.map(c=>{const price=Number(prices[c.id]||c.base),qty=Number((m.coins||{})[c.id]||0);return '<div class="event"><div style="flex:1"><b>'+c.icon+' '+c.name+'</b><div class="money">'+fmtCoin(price)+'</div><span class="small muted">Você possui '+qty.toFixed(3)+'</span></div><div class="stack" style="gap:5px"><input id="qty_'+c.id+'" type="number" min="0.001" step="0.001" value="1" aria-label="Quantidade '+c.name+'"><button class="btn small" data-act="coinBuy" data-id="'+c.id+'">Comprar</button><button class="btn small ghost" data-act="coinSell" data-id="'+c.id+'"'+(qty<=0?' disabled':'')+'>Vender</button></div></div>';}).join('');
+  h+='</div><div class="card"><h2>Seu patrimônio digital</h2><div class="list">'+COINS.map(c=>'<div class="item"><span>'+c.name+'</span><b>'+Number((m.coins||{})[c.id]||0).toFixed(3)+'</b></div>').join('')+'</div></div>';
+  h+='<div class="card"><h2>Histórico do mercado</h2><div class="list">'+(S.market.history||[]).slice(-8).reverse().map(x=>'<div class="item"><span>Rodada '+x.round+'</span><span>'+esc(x.coin)+' '+(x.pct>=0?'+':'')+Number(x.pct).toFixed(1)+'%</span></div>').join('')+'</div></div>'; return h;
+}
+function messagesHtml(){
+  const m=me(), list=(S.messages||[]).filter(x=>x.to===S.uid||x.from===S.uid||x.to==='all'||x.to==='npc');
+  return '<div class="card stack"><h2>💬 Mensagens</h2><div class="muted small">Mensagens entre jogadores, recados anônimos e comunicados dos personagens do mundo.</div><label for="msgTo">Destinatário</label><select id="msgTo"><option value="all">Todos os jogadores</option><option value="npc">Personagens do mundo</option>'+Object.values(C.P).filter(p=>p.id!==S.uid).map(p=>'<option value="'+p.id+'">'+esc(p.name)+'</option>').join('')+'</select><label for="msgText">Mensagem</label><textarea id="msgText" maxlength="300" rows="3" placeholder="Escreva sua mensagem..."></textarea><label><input id="msgAnon" type="checkbox"> Enviar anonimamente</label><button class="btn" data-act="sendMessage">Enviar mensagem</button></div>'+
+  '<div class="card stack"><h2>Caixa de entrada</h2>'+(list.length?list.slice(-35).reverse().map(x=>'<div class="event"><div><b>'+esc(x.anon?(S.unlocked?'Anônimo · '+(C.P[x.from]?C.P[x.from].name:'remetente oculto'):'Anônimo'):x.fromName||'Personagem')+'</b><span class="small muted">'+new Date(x.ts||Date.now()).toLocaleString('pt-BR')+'</span><div>'+esc(x.text)+'</div></div></div>').join(''):'<div class="muted small">Nenhuma mensagem por enquanto.</div>')+'</div>'+
+  '<div class="card stack"><h2>📜 Recados do mundo</h2><button class="btn ghost" data-act="npcMessage">Receber notícia de um personagem</button>'+(m.npcs&&m.npcs.includes('capanga')?'<button class="btn ghost" data-act="capangaOrder">Enviar ordem ao capanga</button>':'')+'<div class="muted small">Comerciantes, autoridades e personagens podem enviar propostas, alertas e convites.</div></div>';
+}
+function battleHtml(){
+  const b=S.battle||{}, m=me(), opponents=Object.values(C.P).filter(p=>p.id!==S.uid&&alive(p.id));
+  let h='<div class="card stack"><h2>⚔️ Arena de duelos</h2><div class="muted small">Duelo por turnos, com atributos e equipamentos fictícios. Sem detalhes gráficos.</div>';
+  if(b.status==='active'&&(b.a===S.uid||b.b===S.uid)){
+    const mine=b.hp&&b.hp[S.uid]||100, other=b.a===S.uid?b.b:b.a, theirs=b.hp&&b.hp[other]||100;
+    h+='<div class="event"><div><b>Seu HP</b><div class="bar"><i style="width:'+mine+'%"></i></div><b>'+mine+'/100</b></div><div><b>'+esc(C.P[other]?C.P[other].name:'Adversário')+'</b><div class="bar"><i style="width:'+theirs+'%"></i></div><b>'+theirs+'/100</b></div></div><div class="chip">'+(b.turn===S.uid?'Sua vez!':'Aguardando o adversário')+'</div>';
+    if(b.turn===S.uid) h+='<div class="row"><button class="btn" data-act="battleMove" data-move="attack">Investida</button><button class="btn ghost" data-act="battleMove" data-move="guard">Defender</button><button class="btn ghost" data-act="battleMove" data-move="yield">Desistir</button></div>';
+    h+='<div class="small muted">'+esc(b.last||'O duelo começou!')+'</div>';
+  }else{
+    if(b.status==='done') h+='<div class="msg">Último duelo: '+esc(b.result||'encerrado')+'</div>';
+    h+='<label for="battleTarget">Desafiar jogador</label><select id="battleTarget">'+playerOptions(opponents.map(p=>p.id))+'</select><button class="btn" data-act="battleChallenge"'+(!opponents.length?' disabled':'')+'>Iniciar duelo</button>';
+  }
+  h+='</div><div class="card stack"><h2>Loja de equipamentos</h2><div class="muted small">Itens fantásticos que alteram atributos apenas dentro do jogo.</div>';
+  h+=GEAR.map(g=>'<div class="event"><div><b>'+g.name+'</b><span class="small muted">'+g.desc+' Poder +'+g.power+' · Defesa +'+g.guard+' · '+fmt(g.price)+'</span></div><button class="btn small ghost" data-act="buyGear" data-id="'+g.id+'">Comprar</button></div>').join('');
+  h+='<div class="small">Seu inventário: '+((m.inventory||[]).map(id=>(GEAR.find(g=>g.id===id)||{}).name||id).join(', ')||'vazio')+'</div></div>'; return h;
+}
+function syncCryptoCycle(){
+  if(!db||!S.market||!Number.isFinite(C.round)) return;
+  const cycle=Math.floor(C.round/5); if(cycle<1||Number(S.market.cycle||0)>=cycle||S.marketBusy) return;
+  S.marketBusy=true;
+  (async()=>{try{const ref=db.doc('market/state');const lease=await ref.acquire({holder:S.uid,ttlMs:8000});if(!lease.acquired)return;const snap=await ref.get();const old=snap.exists?snap.data():{};if(Number(old.cycle||0)>=cycle)return;const prices={...(old.prices||{})},history=[...(old.history||[])];for(const c of COINS){const before=Number(prices[c.id]||c.base);const pct=-99.5+Math.random()*399.5;const after=Math.max(.01,before*(1+pct/100));prices[c.id]=Math.round(after*100)/100;history.push({round:cycle*5,coin:c.id,pct:Number(pct.toFixed(1))});}await ref.set({cycle,prices,history:history.slice(-60),updatedAt:Date.now()});}catch(e){}finally{S.marketBusy=false;}})();
+}
 function moreHtml(){
   const subs=[['chest','Baús'],['power','Poder'],['world','Mundo']];
   const body={chest:chestHtml,power:powerHtml,world:worldHtml}[S.sub]||chestHtml;
@@ -784,6 +844,7 @@ function darkHtml(){
   return '<div class="card stack"><h2>???</h2><div class="muted small">Coisas que o governo não pode saber. Nada daqui aparece no mural e o presidente não pode barrar, mas você fica <b>procurado</b>.</div></div>'+
     '<div class="card stack"><h2>Voo clandestino</h2><div class="muted small">Viaja sem pedir autorização ao presidente, por '+fmt(FEE_BLACK)+'.</div>'+dests.map(([k,n])=>'<div class="event"><div><b>'+esc(n)+'</b></div><button class="btn small ghost" data-act="darkFly" data-id="'+k+'"'+dis+'>'+fmt(FEE_BLACK)+'</button></div>').join('')+msgHtml()+'</div>'+
     darkMore(m)+
+    '<div class="card stack"><h2>Mercado clandestino de equipamentos</h2><div class="muted small">Artefatos e acessórios fictícios para melhorar seus atributos na arena.</div>'+GEAR.map(g=>'<div class="event"><div><b>'+g.name+'</b><span class="small muted">'+g.desc+' Poder +'+g.power+' · Defesa +'+g.guard+' · '+fmt(g.price)+'</span></div><button class="btn small ghost" data-act="buyGear" data-id="'+g.id+'">Comprar</button></div>').join('')+'</div>'+
     (boats.length?'<div class="card stack"><h2>Barco clandestino</h2><div class="muted small">Um estranho te leva de barco por '+fmt(FEE_BOAT)+', só de e para a ilha. Também deixa você procurado.</div>'+boats.map(([k,n])=>'<div class="event"><div><b>'+esc(n)+'</b></div><button class="btn small ghost" data-act="boat" data-id="'+k+'"'+dis+'>'+fmt(FEE_BOAT)+'</button></div>').join('')+'</div>':'');
 }
 function impeachHtml(){
@@ -1014,6 +1075,17 @@ function adminHtml(){
   return '<div class="card stack"><div class="row"><h2 style="margin:0">Área do dono do jogo</h2><button class="btn small ghost" data-act="lock">Trancar</button></div>'+
     '<div><label for="appUrl">Link deste app (para os QR abrirem direto)</label><input type="url" id="appUrl" placeholder="https://seu-app.exemplo.com (opcional)" value="'+esc(S.game.appUrl||'')+'"></div>'+
     '<button class="btn ghost small" data-act="saveUrl">Salvar link</button>'+
+    '<h2 style="margin-top:6px">Status dos jogadores e salários</h2>'+
+    '<div class="muted small">Ajuste a situação social, título, saldo, vida, comida e pagamento individual de cada participante.</div>'+
+    Object.values(C.P).map(p=>{ const cfg=S.adminPlayers[p.id]||{}; const every=Math.max(1,Number(cfg.salaryEvery)||5); return '<div class="card stack"><b>'+esc(p.name)+'</b>'+
+      '<div class="row"><div style="flex:1"><label>Status</label><select id="stStatus_'+p.id+'">'+['Cidadão','Pobre','Classe média','Rico','Milionário','Procurado','Protegido','Preso'].map(v=>'<option'+((cfg.status||p.status)===v?' selected':'')+'>'+v+'</option>').join('')+'</select></div><div style="flex:1"><label>Título</label><input id="stTitle_'+p.id+'" maxlength="30" value="'+esc(cfg.title||p.adminTitle||'')+'" placeholder="Ex: Herdeiro"></div></div>'+
+      '<div class="row"><div style="flex:1"><label>Classe</label><select id="stClass_'+p.id+'">'+['pirata','banqueiro','soldado','comerciante','construtor','politico','medico','nomade'].map(v=>'<option value="'+v+'"'+(p.cls===v?' selected':'')+'>'+esc(clsName(v))+'</option>').join('')+'</select></div><div style="flex:1"><label>Profissão</label><select id="stJob_'+p.id+'"><option value="">Sem profissão</option>'+PLACE_IDS.map(v=>'<option value="'+v+'"'+(p.job===v?' selected':'')+'>'+esc(PLACES[v].name)+'</option>').join('')+'</select></div></div>'+
+      '<div class="row"><div><label>Dinheiro</label><input id="stMoney_'+p.id+'" type="number" value="'+Math.round(p.money)+'"></div><div><label>Vida</label><input id="stHp_'+p.id+'" type="number" min="0" max="100" value="'+p.hp+'"></div><div><label>Comida</label><input id="stFood_'+p.id+'" type="number" min="0" max="100" value="'+p.food+'"></div></div>'+
+      '<div class="row"><div><label>Salário por pagamento</label><input id="stSalary_'+p.id+'" type="number" min="0" value="'+(cfg.salary||0)+'"></div><div><label>A cada quantas rodadas</label><input id="stEvery_'+p.id+'" type="number" min="1" value="'+(cfg.salaryEvery||5)+'"></div></div>'+
+      '<div class="row"><div><label>Bônus/penalidade (%)</label><input id="stPct_'+p.id+'" type="number" min="-100" max="300" value="'+(cfg.salaryPct||0)+'"></div><div><label>Efeito especial</label><input id="stEffect_'+p.id+'" maxlength="40" value="'+esc(cfg.effect||'')+'" placeholder="Ex: Proteção"></div></div>'+
+      '<div class="small muted">'+(cfg.salaryEnabled?'Próximo pagamento em '+(every-(C.round%every))+' rodada(s)':'Salário automático desativado')+'</div>'+
+      '<label><input id="stEnabled_'+p.id+'" type="checkbox" '+(cfg.salaryEnabled?'checked':'')+'> Ativar salário automático</label>'+
+      '<button class="btn small" data-act="savePlayerStatus" data-id="'+p.id+'">Salvar status e salário</button></div>'; }).join('')+
     '<h2 style="margin-top:6px">Recomeçar a partida</h2>'+
     '<div class="muted small">Apaga a partida inteira para todos (jogadores, dinheiro, terras, cobranças e caça ao tesouro). Todo mundo volta para a escolha de nome e classe. Os baús, seus valores e o link do app ficam, e os baús abertos voltam a ficar fechados.</div>'+
     (S.confirmSeven?'<div class="msg err">Tem certeza? Isso apaga a partida de todos os celulares e não dá para desfazer.</div><div class="row"><button class="btn danger" data-act="backSeven">Sim, voltar ao sétimo dia</button><button class="btn ghost" data-act="backSevenNo">Cancelar</button></div>'
@@ -1092,7 +1164,7 @@ function worldHtml(){
   const ps=Object.values(C.P).sort((a,b)=>b.money-a.money);
   return '<div class="card small">Rodada <b>'+(C.round+1)+'</b> · Imposto <b>'+C.taxRate+'%</b></div>'+'<div class="card"><h2>Jogadores</h2><div class="list">'+ps.map(p=>{
     const n=IDS.filter(x=>C.props[x].owner===p.id).length;
-    return '<div class="item" style="align-items:center"><div style="flex:1;min-width:0"><div>'+(p.id===presId()?'<span class="chip" style="margin-right:6px"><b>Presidente</b></span>':'')+'<b>'+esc(p.name)+'</b> <span class="muted small">'+esc(clsName(p.cls))+' · '+n+' terra'+(n===1?'':'s')+'</span></div>'+bar(p)+'</div>'+
+    return '<div class="item" style="align-items:center"><div style="flex:1;min-width:0"><div>'+(p.id===presId()?'<span class="chip" style="margin-right:6px"><b>Presidente</b></span>':'')+'<b>'+esc(p.name)+'</b> <span class="muted small">'+esc(clsName(p.cls))+' · '+esc(p.status||'Cidadão')+(p.adminTitle?' · '+esc(p.adminTitle):'')+(p.adminEffect?' · '+esc(p.adminEffect):'')+' · '+n+' terra'+(n===1?'':'s')+'</span></div>'+bar(p)+'</div>'+
     '<div style="text-align:right"><div class="money">'+fmt(p.money)+'</div><div class="small muted">'+(p.dead?'morreu':p.bankrupt?'faliu':Math.max(0,p.hp)+' vida')+'</div></div></div>';}).join('')+'</div></div>'+
     '<div class="card"><h2>Acontecimentos</h2><div class="list">'+(C.feed.length?C.feed.slice(0,15).map(f=>'<div class="item"><span>'+esc(f.text)+'</span></div>').join(''):'<div class="muted">Ainda não aconteceu nada.</div>')+'</div></div>';
 }
@@ -1107,7 +1179,7 @@ function html(){
   if(!S.canWrite) return '<div class="card">Você está só olhando. Não foi possível gravar no banco do jogo.</div>';
   if(!me()) return joinHtml();
   if(out()&&!C.over) return '<div class="card"><b>'+(me().dead?'Você morreu.':'Você faliu.')+'</b> Agora é só assistir.</div>'+resetHtml()+worldHtml();
-  const body=({me:meHtml,bank:bankHtml,city:cityHtml,land:landHtml,ilha:ilhaHtml,dark:darkHtml,more:moreHtml}[S.tab]||meHtml)();
+  const body=({me:meHtml,bank:bankHtml,city:cityHtml,land:landHtml,ilha:ilhaHtml,dark:darkHtml,more:moreHtml,market:marketHtml,messages:messagesHtml,battle:battleHtml}[S.tab]||meHtml)();
   return bannerHtml()+body;
 }
 function render(){
@@ -1147,6 +1219,7 @@ function drawQRs(){
 }
 function update(){
   compute();
+  syncCryptoCycle();
   if(ready()&&S.hashCode){ const h=S.hashCode; S.hashCode=null; handleCode(h); }
   ensureCode(); islandTick(); render();
 }
@@ -1544,6 +1617,10 @@ const ACT={
     for(const [id,c] of closed){ await db.collection('chests').doc(id).set({...c,claimedBy:null,claimedAt:null}); }
     await saveGame({president:null,since:null});
     await del('players',Object.keys(S.players||{}));
+    await del('messages',(S.messages||[]).map(x=>x.id));
+    await del('playerAdmin',Object.keys(S.adminPlayers||{}));
+    try{await db.doc('battle/state').delete();}catch(e){}
+    try{await db.doc('market/state').set({cycle:0,prices:Object.fromEntries(COINS.map(c=>[c.id,c.base])),history:[]});}catch(e){}
     S.confirmSeven=false; S.confirmReset=false; S.confirmBk=false; S.fresh=false; S.uid=S.base;
     S.tab='me'; S.sub='chest'; S.msg=null; S.pending=null; render(); window.scrollTo(0,0);
   }),
@@ -1626,7 +1703,23 @@ const ACT={
   sheetEvents:()=>guard(async()=>{
     const items=Object.entries(EVENTS).map(([id,e])=>({title:'CARTA DE EVENTO',line:e.name,sub:e.text,code:'EVT-'+id}));
     await sheet(items,'cartas-de-evento.png');
-  })
+  }),
+  savePlayerStatus:(b)=>guard(async()=>{
+    if(!S.unlocked) return say('err','Só o dono pode alterar jogadores.'); const id=b.dataset.id, p=C.P[id]; if(!p) return;
+    const get=k=>document.getElementById(k+'_'+id); const money=Number(get('stMoney').value),hp=Number(get('stHp').value),food=Number(get('stFood').value);
+    if(![money,hp,food].every(Number.isFinite)) return say('err','Confira dinheiro, vida e comida.');
+    const cls=get('stClass').value,job=get('stJob').value;if(!['pirata','banqueiro','soldado','comerciante','construtor','politico','medico','nomade'].includes(cls)||job&&!PLACES[job])return say('err','Classe ou profissão inválida.');const cfg={status:get('stStatus').value,title:get('stTitle').value.trim(),salary:Math.max(0,Number(get('stSalary').value)||0),salaryEvery:Math.max(1,Math.floor(Number(get('stEvery').value)||1)),salaryPct:Math.max(-100,Math.min(300,Number(get('stPct').value)||0)),effect:get('stEffect').value.trim(),salaryEnabled:get('stEnabled').checked};
+    await db.collection('playerAdmin').doc(id).set(cfg); await L({type:'adminSet',by:S.base,target:id,money,hp,food,status:cfg.status,title:cfg.title,cls,job}); say('ok','Status, classe, profissão e salário de '+p.name+' atualizados.');
+  }),
+  coinBuy:(b)=>guard(async()=>{const id=b.dataset.id,c=COINS.find(x=>x.id===id),price=Number((S.market.prices||{})[id]||c.base),qty=Number($('#qty_'+id).value);if(!(qty>0&&qty<=100000))return say('err','Digite uma quantidade válida.');const total=Math.round(qty*price*100)/100;if(total>me().money)return say('err','Saldo insuficiente.');await L({type:'cryptoTrade',by:S.uid,coin:id,qty,total,side:'buy'});say('ok','Compra registrada na bolsa.');}),
+  coinSell:(b)=>guard(async()=>{const id=b.dataset.id,c=COINS.find(x=>x.id===id),qty=Number($('#qty_'+id).value);if(!(qty>0))return say('err','Digite uma quantidade válida.');const owned=Number((me().coins||{})[id]||0);if(qty>owned)return say('err','Você não possui essa quantidade.');const price=Number((S.market.prices||{})[id]||c.base),total=Math.round(qty*price*100)/100;await L({type:'cryptoTrade',by:S.uid,coin:id,qty,total,side:'sell'});say('ok','Venda registrada na bolsa.');}),
+  sendMessage:()=>guard(async()=>{const text=$('#msgText').value.trim(),to=$('#msgTo').value,anon=$('#msgAnon').checked;if(!text)return say('err','Escreva uma mensagem primeiro.');await db.collection('messages').add({from:S.uid,fromName:anon?'':me().name,to,text:text.slice(0,300),anon,ts:Date.now()});$('#msgText').value='';say('ok','Mensagem enviada.');}),
+  capangaOrder:()=>guard(async()=>{if(!me().npcs.includes('capanga'))return say('err','Você não contratou um capanga.');const reports=['Ordem recebida. Vou observar o mercado e volto com novidades.','Relatório: há movimentação na praça.','Relatório: encontrei uma oportunidade de negócio.'];await db.collection('messages').add({from:'npc',fromName:'Seu capanga',to:S.uid,text:reports[Math.floor(Math.random()*reports.length)],anon:false,ts:Date.now()});say('ok','Seu capanga respondeu.');}),
+  npcMessage:()=>guard(async()=>{const choices=['O comerciante da praça anunciou uma oferta especial.','A prefeitura informa que novas decisões serão votadas em breve.','Um viajante misterioso deixou um convite no mural.','Seus contatos comentam que a bolsa pode mudar na próxima rodada.'];await db.collection('messages').add({from:'npc',fromName:'Mural do mundo',to:S.uid,text:choices[Math.floor(Math.random()*choices.length)],anon:false,ts:Date.now()});say('ok','Um personagem deixou um recado.');}),
+  buyGear:(b)=>guard(async()=>{const g=GEAR.find(x=>x.id===b.dataset.id);if(!g||me().money<g.price)return say('err','Saldo insuficiente.');const old=S.players[S.uid]||{},inv=[...(old.inventory||[])];if(inv.includes(g.id))return say('err','Você já possui esse item.');inv.push(g.id);await db.collection('players').doc(S.uid).update({inventory:inv});await L({type:'bank',by:S.uid,amount:-g.price,note:'Equipamento: '+g.name});say('ok',g.name+' adicionado ao inventário.');}),
+  battleChallenge:()=>guard(async()=>{const target=$('#battleTarget').value;if(me().status==='Preso')return say('err','Você está preso e não pode duelar.');if(!target||!alive(target))return say('err','Escolha um adversário.');if(C.P[target].status==='Preso')return say('err','Esse jogador está preso.');const ref=db.doc('battle/state');const snap=await ref.get();const old=snap.exists?snap.data():{};if(old.status==='active')return say('err','Já existe um duelo em andamento.');await ref.set({status:'active',a:S.uid,b:target,turn:S.uid,hp:{[S.uid]:100,[target]:100},guard:{},last:me().name+' desafiou '+C.P[target].name,startedAt:Date.now()});say('ok','Desafio enviado! O primeiro turno é seu.');}),
+  battleMove:(b)=>guard(async()=>{const ref=db.doc('battle/state'),snap=await ref.get();if(!snap.exists)return;const d=snap.data();if(d.status!=='active'||d.turn!==S.uid)return say('err','Não é seu turno.');const other=d.a===S.uid?d.b:d.a,hp={...d.hp},guards={...d.guard};let last='';if(b.dataset.move==='yield'){d.status='done';d.result=C.P[other].name+' venceu por desistência.';last=me().name+' encerrou o duelo.';}else if(b.dataset.move==='guard'){guards[S.uid]=true;last=me().name+' assumiu postura defensiva.';}else{const inv=me().inventory||[],bonus=inv.reduce((n,id)=>n+(GEAR.find(g=>g.id===id)?.power||0),0);if(me().npcs&&me().npcs.includes('capanga'))bonus+=5;if(presId()===S.uid)bonus+=3;let damage=8+Math.floor(Math.random()*11)+bonus;const defender=C.P[other];const defense=(defender.inventory||[]).reduce((n,id)=>n+(GEAR.find(g=>g.id===id)?.guard||0),0)+(defender.npcs&&defender.npcs.includes('seguranca')?4:0)+(presId()===other?3:0);damage=Math.max(1,damage-defense);if(defender.status==='Protegido')damage=Math.ceil(damage*.5);if(guards[other]){damage=Math.max(2,Math.floor(damage*.4));guards[other]=false;}hp[other]=Math.max(0,(hp[other]||100)-damage);last=me().name+' marcou '+damage+' pontos no duelo.';if(hp[other]<=0){d.status='done';d.result=me().name+' venceu o duelo!';}}d.hp=hp;d.guard=guards;d.last=last;if(d.status!=='done')d.turn=other;await ref.set(d);say('ok',last);}),
+  sub:(b)=>{S.sub=b.dataset.v;render();}
 };
 /* ---------- folha de QR para imprimir (imagem PNG) ---------- */
 function wrap(ctx,text,x,y,w,lh){
@@ -1726,6 +1819,12 @@ async function boot(){
   db.doc('island/round').onSnapshot(s=>{ S.island=s.exists?s.data():{}; S.loaded.island=true; update(); },fail);
   db.doc('game/state').onSnapshot(s=>{ S.game=s.exists?s.data():{}; S.loaded.game=true; update(); },fail);
   db.doc('game/catalog').onSnapshot(s=>{ S.catalog=s.exists&&s.data().overrides?s.data().overrides:{}; S.loaded.catalog=true; update(); },fail);
+  const softFail=e=>console.warn('Recurso opcional indisponível:',e&&e.code||e);
+  db.collection('playerAdmin').onSnapshot(s=>{ S.adminPlayers=map(s); update(); },softFail);
+  db.collection('messages').orderBy('ts','asc').limit(150).onSnapshot(s=>{ S.messages=s.docs.map(x=>({id:x.id,...x.data()})); render(); },softFail);
+  db.doc('market/state').onSnapshot(s=>{ S.market=s.exists?s.data():{}; render(); },softFail);
+  db.doc('battle/state').onSnapshot(s=>{ S.battle=s.exists?s.data():{}; render(); },softFail);
+  db.doc('market/state').get().then(s=>{if(!s.exists)db.doc('market/state').set({cycle:0,prices:Object.fromEntries(COINS.map(c=>[c.id,c.base])),history:[]});}).catch(()=>{});
   setTimeout(()=>{ if(!ready()){ S.timedOut=true; render(); } },10000);
 }
 boot();
